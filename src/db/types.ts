@@ -70,6 +70,14 @@ export interface Card {
    * cevapta kuyruk bir uzuyordu ve 5 kelimelik gün 17 karta çıkıyordu.
    */
   introducedAt?: string;
+  /**
+   * Kelimenin **öğretildiği** (tanıştırma ekranının gösterildiği) tarih.
+   *
+   * Hiç görülmemiş bir kelimeyi doğrudan sınamak öğretmez: kullanıcı şıkları
+   * tahmin eder, yanlış yapar, aynı yere döner. Önce kelime tanıtılır —
+   * anlamı, örneği, telaffuzu — sonra sorulur.
+   */
+  taughtAt?: string;
   /** Son çalışıldığı tarih, 'YYYY-MM-DD' */
   lastReviewedAt?: string;
   /**

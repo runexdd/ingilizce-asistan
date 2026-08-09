@@ -29,7 +29,7 @@ import {
   type SpeechInputHandle,
 } from '../../src/core/speechInput';
 import { describeInterval } from '../../src/core/srs';
-import { answerCard, recordSession } from '../../src/db/mutations';
+import { answerCard, markCardTaught, recordSession } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
 import { getStudyQueue } from '../../src/db/selectors';
 import type { Card } from '../../src/db/types';
@@ -121,6 +121,7 @@ export default function CardsScreen() {
             key={`r-${card.id}`}
             card={card}
             pool={queue}
+            onTaught={() => update((d) => markCardTaught(d, card.id))}
             onAnswer={handleAnswer}
           />
         )}
@@ -166,44 +167,109 @@ function StageBar({ stage }: { stage: CardStage }) {
 
 /* --------------------------------------------------------- 1. aşama: tanıma */
 
+/**
+ * 1. aşamanın adımları.
+ *
+ * `intro` — kelime hiç görülmemişse önce **tanıtılır**: anlamı, örneği,
+ *           telaffuzu. Sınav değil.
+ * `ask`   — dört şıklı soru.
+ * `teach` — yanlış cevaptan sonra öğretme paneli. Kullanıcı burada kelimeyi
+ *           öğrenir ve **tekrar dener**; ceza olarak beklemez.
+ */
+type RecognizePhase = 'intro' | 'ask' | 'teach';
+
 function RecognizeStage({
   card,
   pool,
+  onTaught,
   onAnswer,
 }: {
   card: Card;
   pool: Card[];
+  onTaught: () => void;
   onAnswer: (verdict: AnswerVerdict, note: string) => void;
 }) {
+  const [phase, setPhase] = useState<RecognizePhase>(card.taughtAt ? 'ask' : 'intro');
   const [picked, setPicked] = useState<string | null>(null);
+  /** Bu kelimede kaç kez yanlış yapıldı — ikinci yanlışta kelime dönüyor */
+  const [misses, setMisses] = useState(0);
+  const [round, setRound] = useState(0);
 
   /**
    * Çeldiriciler aynı kuyruktaki diğer kelimelerin anlamlarından geliyor.
    * Gün tek tema üzerine kurulu olduğu için bunlar birbirine yakın çıkıyor —
    * ayırt etmeyi gerçekten zorlaştıran, dolayısıyla öğreten şey bu.
+   *
+   * ⚠️ Bağımlılıkta `pool` dizisinin kendisi kullanılamaz: her veri
+   * güncellemesinde yeni bir dizi üretiliyor ve şıklar soru ortasında
+   * yeniden karışıyordu. Kimlik listesi sabit kaldığı sürece karışmaz.
    */
+  const poolKey = pool.map((c) => c.id).join(',');
   const options = useMemo(
     () =>
       buildOptions(
         card.meaning,
         pool.filter((c) => c.id !== card.id).map((c) => c.meaning)
       ),
-    [card.id, card.meaning, pool]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [card.id, poolKey, round]
   );
+
+  function startAsking() {
+    onTaught();
+    setPhase('ask');
+  }
 
   function choose(option: string) {
     if (picked) return;
     setPicked(option);
-    const correct = option === card.meaning;
-    setTimeout(
-      () =>
-        onAnswer(
-          correct ? 'correct' : 'wrong',
-          correct
-            ? `"${card.word}" → yazma aşamasına geçti`
-            : `"${card.word}" → ${card.meaning}`
-        ),
-      correct ? 550 : 1400
+
+    if (option === card.meaning) {
+      setTimeout(
+        () => onAnswer('correct', `"${card.word}" → yazma aşamasına geçti`),
+        550
+      );
+      return;
+    }
+
+    /**
+     * Yanlışta ceza yok, **öğretme** var: kelime anlamı, örneği ve telaffuzuyla
+     * gösteriliyor. İlk yanlıştan sonra aynı soru tekrar soruluyor; kullanıcı
+     * öğrendiğini hemen kullanıp bir üst basamağa geçebiliyor. İkinci yanlışta
+     * kelime sıranın sonuna gidiyor ki tek kelimede kilitlenmesin — ama yine
+     * öğretilmiş oluyor, boşa geçmiyor.
+     */
+    setMisses((n) => n + 1);
+    setTimeout(() => {
+      setPhase('teach');
+      setPicked(null);
+    }, 900);
+  }
+
+  if (phase === 'intro' || phase === 'teach') {
+    const rotate = misses >= 2;
+    return (
+      <TeachPanel
+        card={card}
+        title={phase === 'intro' ? 'Yeni kelime' : 'Doğrusu bu'}
+        buttonLabel={
+          phase === 'intro'
+            ? 'Anladım, sor bakalım'
+            : rotate
+              ? 'Sıradaki kelime'
+              : 'Tekrar dene'
+        }
+        onContinue={() => {
+          if (phase === 'intro') {
+            startAsking();
+          } else if (rotate) {
+            onAnswer('wrong', `"${card.word}" → ${card.meaning} · birazdan tekrar`);
+          } else {
+            setRound((n) => n + 1);
+            setPhase('ask');
+          }
+        }}
+      />
     );
   }
 
@@ -232,6 +298,45 @@ function RecognizeStage({
           );
         })}
       </View>
+    </View>
+  );
+}
+
+/**
+ * Öğretme paneli — hem ilk tanıştırmada hem yanlış cevaptan sonra.
+ *
+ * Kelimenin anlamı, örnek cümlesi ve telaffuzu bir arada. Kullanıcının
+ * kuralı: uygulama önce öğretmeli, sonra sınamalı.
+ */
+function TeachPanel({
+  card,
+  title,
+  buttonLabel,
+  onContinue,
+}: {
+  card: Card;
+  title: string;
+  buttonLabel: string;
+  onContinue: () => void;
+}) {
+  return (
+    <View>
+      <Text style={styles.teachTitle}>{title}</Text>
+      <Text style={styles.question}>{card.word}</Text>
+      <Text style={styles.teachMeaning}>{card.meaning}</Text>
+
+      {card.example && <Text style={styles.teachExample}>“{card.example}”</Text>}
+
+      <Pressable
+        style={styles.listenButton}
+        onPress={() => void speakEnglish(card.word, { rate: 0.8 })}
+      >
+        <Text style={styles.listenText}>🔊  Nasıl okunuyor</Text>
+      </Pressable>
+
+      <Pressable style={styles.button} onPress={onContinue}>
+        <Text style={styles.buttonText}>{buttonLabel}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -522,6 +627,31 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     marginTop: spacing.xs + 2,
+  },
+
+  teachTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  teachMeaning: {
+    fontSize: 20,
+    color: colors.accent,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  teachExample: {
+    fontSize: 15,
+    color: colors.muted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
 
   options: { marginTop: spacing.lg, gap: spacing.sm },

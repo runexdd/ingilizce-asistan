@@ -78,6 +78,26 @@ export function addCard(
 }
 
 /**
+ * Kelime tanıtıldı olarak işaretlenir.
+ *
+ * Kart bir daha tanıştırma ekranını göstermez; bundan sonra doğrudan sorulur.
+ * Sınav sayılmaz, sadece "bu kelimeyi gördü" kaydıdır.
+ */
+export function markCardTaught(
+  data: AppData,
+  cardId: string,
+  today: Date = new Date()
+): AppData {
+  const iso = toISODate(today);
+  return {
+    ...data,
+    cards: data.cards.map((card) =>
+      card.id === cardId ? { ...card, taughtAt: card.taughtAt ?? iso } : card
+    ),
+  };
+}
+
+/**
  * Kartı 3 aşamalı akışa göre değerlendirir.
  *
  * İki şey birden güncellenir ve bilinçli olarak ayrı tutulur:

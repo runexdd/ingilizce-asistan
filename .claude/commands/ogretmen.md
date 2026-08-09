@@ -522,10 +522,29 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
     dikkat et: bir haftada "60 gün" → "20 gün" demek güven kaybettirir.
 
 - **`dailyNewWords`** — Tavan 1.5'teki tabloda ("günde yeni kelime"); o sayının
-  üstüne çıkma. Tavanın altında nerede duracağını tutma oranı belirler
-  (`measurements.retention`):
-  - %85 üstü → sayıyı bir artır, tavanı aşmadan
-  - %60 altı → azalt, önce eskiler otursun
+  üstüne çıkma. Tavanın altında nerede duracağına **seviye etiketine bakarak
+  değil, kişinin verisine bakarak** karar ver.
+
+  > Kullanıcının sözü: *"herkes B1'de aynı düzeyde değil; biri B1 başlangıç
+  > olabilir, biri B1 son. Birinin grameri iyidir, diğerinin kelime bilgisi.
+  > Bu verilere baktıktan sonra karar vermeli kelime sayısına."*
+  >
+  > "B1" bir aralıktır, bir nokta değil. Aynı etiketi taşıyan iki kişiye aynı
+  > sayıyı vermek, ikisini de yanlış yerden çalıştırmak demektir.
+
+  Bakılacak veriler:
+  - `measurements.retention` — kelime tutma oranı. %85 üstü → bir artır (tavanı
+    aşmadan). %60 altı → azalt, önce eskiler otursun.
+  - `wordProgress` — dünün kelimeleri gerçekten oturdu mu. Yarısı 1. basamakta
+    kaldıysa sayıyı artırma, düşür.
+  - `recentErrors` — hatalar gramerde mi yoğunlaşmış, kelime seçiminde mi?
+    Gramerde yoğunsa kelime sayısını kıs, yükü göreve kaydır; kelime
+    bilgisinde yoğunsa tersini yap.
+  - `profile.weakestSkill` ve yerleştirme sınavının tanıma/üretme ayrımı —
+    tanıması iyi ama üretmesi zayıf olan kişiye çok kelime vermek boşa gider;
+    o kişi az kelimeyi çok kullanmalı.
+  - `measurements.daysSinceLastSession` — ara vermişse dönüşü kolaylaştır,
+    ilk gün az kelime ver.
 
 - **`dailyMinutes`** — Gerçekçi ol. `measurements.weeklyMinutes` ne diyorsa
   ondan çok uzaklaşma; %30'dan fazla artırma. Tutulamayan hedef, hedef değildir.
