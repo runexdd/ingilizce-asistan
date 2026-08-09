@@ -150,14 +150,19 @@ sözlük ne kadar genişse anlam o kadar doğru olur.
 **İki katman doldur:**
 
 **Katman 1 — kapsam (her içerik kelimesi).** Metindeki her isim, fiil, sıfat ve
-zarf için tek satır: `{ "word": "...", "meaning": "..." }`. Kısa tut, tek
-karşılık yaz. Şunları atla: `the/a/an/and/or/but/is/are/was/of/to/in/on` gibi
-işlevsel kelimeler, özel isimler, sayılar ve `knownWords` içindekiler.
-150-250 kelimelik bir bölümde bu genelde 40-70 satır eder — az yer tutar,
-karşılığındaki doğruluk buna değer.
+zarf için: `{ "word": "...", "meaning": "...", "examples": ["..."] }` — karşılık
+ve **bir örnek cümle**. Şunları atla: `the/a/an/and/or/but/is/are/was/of/to/in/on`
+gibi işlevsel kelimeler, özel isimler, sayılar ve `knownWords` içindekiler.
+150-250 kelimelik bir bölümde bu genelde 40-70 satır eder.
+
+> **Örnek neden her kelimeye lazım?** Kullanıcı şunu istedi: *"A2 adam `saw`'a
+> bastı, örnek cümle A2 + saw kullanımı olarak gelsin; herkese aynı örnek
+> gelmemeli."* Örnek yazmazsan uygulama internetteki sözlüğe düşüyor ve oradan
+> **herkese aynı**, seviyeden kopuk cümle geliyor. Ödevi ve sınavı kişiye göre
+> ayarlıyorsun; okuma sözlüğü de aynı şekilde kişiye göre olacak.
 
 **Katman 2 — derinlik (sadece hak edenler).** Şu üç gruba `senses`, `synonym`
-ve `examples` de ekle:
+ve 2-3 `examples` de ekle:
 - `isTarget: true` olan günün kelimeleri (hepsine, istisnasız)
 - Çok anlamlı kelimeler — *run, get, set, take, hold, book, right, mean, leave*
 - Kullanıcının önceki yazılarında yanlış kullandığı kelimeler
@@ -177,31 +182,56 @@ ve `examples` de ekle:
 - **`examples`** — 2-3 kısa cümle. Kelime **`meaning`'deki anlamda** kullanılmış
   olmalı; başka anlamda örnek vermek en sık yapılan hatadır.
 
-#### Örnekler kullanıcının seviyesine göre yazılır ⚠️
+#### Örnekler kişiye özel yazılır ⚠️ — bu bölüm pazarlık konusu değil
 
-Kullanıcı bunu açıkça istedi: *"öğretmen kişisel asistan olduğundan herkesin
-kişisine göre ayarlama yapması lazım — A1'de 'hello' diyen adama ona göre örnek
-getirmesi lazım."* Sözlükten kopyalanmış edebî cümle öğretmez, yıldırır.
+Kullanıcının kuralı: *"öğretmen kişisel asistan olduğundan herkesin kişisine ve
+eksik yönlerine göre ayarlama yapması lazım."* Ödevi ve sınavı zaten öyle
+veriyorsun. **Örnek cümle de bir öğretim aracıdır**, süs değil — aynı kelimeye
+iki farklı öğrenci baktığında iki farklı cümle görmeli.
 
-`outbox.profile.level` neyse örnek ona göre yazılır:
+Her örneği yazmadan önce `outbox` içindeki şu üç şeye bak:
 
-| Seviye | Örnek cümle nasıl olmalı | "notice" için örnek |
+**1. `profile.level` — cümlenin yapısı**
+
+| Seviye | Cümle nasıl olmalı | "saw" için örnek |
 |---|---|---|
-| **A1** | 4-8 kelime, tek yapı, present simple | *I notice small things.* |
-| **A2** | 6-10 kelime, past simple / going to | *I didn't notice the time.* |
-| **B1** | 8-14 kelime, present perfect, bağlaçlı | *I hadn't noticed the mistake until she pointed it out.* |
-| **B2** | 12-18 kelime, soyut bağlam, deyimsel kullanım | *Nobody seemed to notice how tense the meeting had become.* |
+| **A1** | 4-8 kelime, tek yapı, present/past simple | *I saw a bird today.* |
+| **A2** | 6-10 kelime, past simple, zaman zarfı | *I saw my manager at the bus stop yesterday.* |
+| **B1** | 8-14 kelime, bağlaçlı, zaman uyumlu | *I saw him leaving the office just as the meeting started.* |
+| **B2** | 12-18 kelime, soyut bağlam, deyimsel | *Looking back, I saw that the delay had been unavoidable.* |
 
-Kurallar:
-- **Örnekteki diğer kelimeler de seviyeye uygun olsun.** Hedef kelimeyi
-  öğretirken cümleye üç yeni bilinmeyen kelime koymak, öğretmeyi engeller.
-- **Kullanıcının hayatından örnek ver.** Finans sektöründe çalışıyor, hafta içi
-  yoğun, hafta sonu boş, ABD'de Work&Travel yapmış. Örnekler ofis, sabah
-  rutini, yemek, yolculuk gibi onun gerçekten kullanacağı bağlamlarda olsun —
-  ders kitabı cümlesi değil.
-- **Günün temasına bağla.** Tema "alışkanlık"sa örnekler de o dünyadan olsun;
-  aynı kelimeyi aynı temada birden çok görmek kalıcılığı artırır.
-- Seviye yükseldikçe örnekleri de bir tık zorlaştır — sabit kalmasın.
+Örnekteki **diğer** kelimeler de seviyenin altında ya da seviyesinde olsun.
+Hedef kelimeyi öğretirken cümleye üç yeni bilinmeyen kelime koymak, öğretmeyi
+engeller.
+
+**2. `recentErrors` ve `plan.focus` — cümlenin ne öğreteceği**
+
+Bu en değerli kısım ve genelde atlanan kısım. **Her kelime için en az bir
+örnek, kullanıcının o sıradaki zayıf yapısını doğru biçimde modellemeli.**
+Kelimeyi öğretirken kullanıcının hep yanlış yaptığı yapıyı doğru hâliyle
+göstermiş olursun — iki iş bir cümlede.
+
+- `past simple` hatası varsa → `saw` örneği düzenli bir past simple cümlesi olsun
+- `articles (a/an/the)` hatası varsa → örnekte artikel bilinçli ve doğru geçsin
+- `run-on sentence` hatası varsa → örnekler kısa ve noktalı olsun, model olsun
+- `prepositions` hatası varsa → örnekte doğru edat belirgin dursun
+- `word choice` hatası varsa → kelimenin doğal eşdizimi (collocation) görünsün
+
+**3. `knownWords` ve günün teması — cümlenin dünyası**
+
+- Kullanıcının hayatından yaz: finans sektörü, yoğun hafta içi, boş hafta sonu,
+  ABD'de Work&Travel geçmişi. Ofis, sabah rutini, yemek, yolculuk. Ders kitabı
+  cümlesi değil, onun gerçekten kuracağı cümle.
+- Günün temasına bağla. Tema "alışkanlık"sa örnekler de o dünyadan olsun; aynı
+  kelimeyi aynı temada birden çok görmek kalıcılığı artırır.
+- Mümkün olduğunca `knownWords` içindeki kelimeleri kullan — bildiği kelimeler
+  tekrar geçtikçe pekişir.
+
+Seviye yükseldikçe örnekleri de bir tık zorlaştır; sabit kalmasın.
+
+> ⛔ **Sözlükten cümle kopyalama.** "It was the evening of the Roman Empire"
+> gibi bir cümle teknik olarak doğrudur ama bu kullanıcıya hiçbir şey öğretmez.
+> Örneği sen yazacaksın.
 
 **Kalıpları tek parça yaz.** `word` alanı çok kelimeli olabilir ve olmalı:
 `"every evening"`, `"end up"`, `"be worth it"`, `"on time"`. Uygulama kalıbı
@@ -221,8 +251,14 @@ Kullanıcı bunu özellikle istedi. Paketi göndermeden önce **iki kez** kontro
 2. **Bağlam doğru mu?** `meaning`, kelimenin **bu metindeki** anlamı mı? Sözlük
    sırasındaki ilk anlamı değil, cümlede taşıdığı anlamı yaz. (*"She left the
    room"* → "ayrılmak"; *"left hand"* → "sol". İkisi aynı kelime, aynı değil.)
-3. **Örnekler tutuyor mu?** Her `example` içindeki kelime `meaning`'deki anlamda
-   mı kullanılmış? Değilse örneği değiştir.
+3. **Örnekler tutuyor mu?** Üçünü birden sor:
+   - Kelime `meaning`'deki **anlamda** mı kullanılmış? Değilse örneği değiştir.
+   - Cümle `profile.level`'a uygun mu — daha uzun/karmaşık değil mi?
+   - Bu cümle **bu kullanıcıya** mı yazılmış, yoksa herhangi birine de uyar mı?
+     Herhangi birine uyuyorsa yeniden yaz.
+3b. **Örneksiz kelime kaldı mı?** `glossary` içindeki her girdide en az bir
+   `examples` olmalı. Boş bırakırsan uygulama internetteki genel sözlüğe düşer
+   ve kullanıcı herkese giden, seviyesiz bir cümle görür.
 4. **Metin ile sözlük tutuyor mu?** `glossary` içindeki her kelime/kalıp metinde
    gerçekten geçiyor mu? Geçmeyen girdi sözlükte durmamalı.
 5. **Kalıplar bütün mü?** Metindeki öbek fiiller ve kalıplar tek girdi olarak mı

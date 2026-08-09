@@ -73,8 +73,16 @@ export interface LookupResult {
   otherMeanings?: string[];
   /** Yaygın bir eş anlamlısı */
   synonym?: string;
-  /** Seviyeye uygun örnek cümleler */
+  /** Örnek cümleler */
   examples?: string[];
+  /**
+   * Örnekleri öğretmen mi yazdı?
+   *
+   * Öğretmenin yazdıkları kullanıcının seviyesine, zayıf yapılarına ve gününün
+   * temasına göre kurulur — kişiye özeldir. İnternetten gelenler herkese
+   * aynıdır. Panelde ayrımı belli edilir ki kullanıcı neye baktığını bilsin.
+   */
+  examplesFromTeacher?: boolean;
   /** İngilizce tanım (ek bağlam) */
   definition?: string;
   /** Çekimli hâlin sözlük hâli: "saw" → "see" */
@@ -359,8 +367,14 @@ export async function lookupWord(
      * the Roman Empire"* dönüyordu — ikisi de kalıpla ilgisiz. Kalıpta ne
      * varsa öğretmenden gelir; yoksa hiç gösterilmez.
      */
+    /**
+     * İnternete yalnızca öğretmenin bırakmadığı alan varsa gidilir.
+     * `senses` buradan gelemez (o servis Türkçe karşılık vermiyor), o yüzden
+     * ölçüt sadece örnek ve eş anlamlı. Öğretmen ikisini de yazmışsa hiç
+     * çıkılmıyor — panel anında ve çevrimdışı açılıyor.
+     */
     const extra =
-      !isPhrase && (!entry.senses?.length || !entry.examples?.length)
+      !isPhrase && (!entry.examples?.length || !entry.synonym)
         ? await defineOnline(word, lemma)
         : null;
 
@@ -374,6 +388,7 @@ export async function lookupWord(
       examples: entry.examples?.length
         ? entry.examples.slice(0, 3)
         : filterExamples(extra?.examples, word, lemma, level),
+      examplesFromTeacher: !!entry.examples?.length,
       definition: extra?.definition,
       sentenceTr: (await sentencePromise) ?? undefined,
     };

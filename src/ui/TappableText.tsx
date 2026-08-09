@@ -363,7 +363,14 @@ export function TappableText({
 
                 {result.examples && result.examples.length > 0 && (
                   <View style={styles.block}>
-                    <Text style={styles.blockTitle}>Örnekler</Text>
+                    {/* Öğretmenin yazdığı örnek kullanıcının seviyesine ve zayıf
+                        yapılarına göre kuruluyor; sözlükten gelen herkese aynı.
+                        Kullanıcı hangisine baktığını bilmeli. */}
+                    <Text style={styles.blockTitle}>
+                      {result.examplesFromTeacher
+                        ? 'Örnekler · sana göre'
+                        : 'Örnekler · genel sözlük'}
+                    </Text>
                     {result.examples.slice(0, 3).map((ex) => (
                       <Pressable
                         key={ex}
