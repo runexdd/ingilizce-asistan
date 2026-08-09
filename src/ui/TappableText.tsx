@@ -39,8 +39,8 @@ interface Props {
   glossary: GlossaryEntry[];
   onAddCard?: (word: string, meaning: string) => void;
   knownWords?: string[];
-  /** Kullanıcının CEFR seviyesi — örnek cümleler buna göre süzülür */
-  level?: string;
+  /** Örnek cümle uzunluk sınırı — seviyeden ve öğretmenin ayarından geliyor */
+  maxExampleWords?: number;
   /**
    * Dış boşluk buradan verilir, sarmalayıcı View ile DEĞİL.
    *
@@ -67,7 +67,7 @@ export function TappableText({
   glossary,
   onAddCard,
   knownWords = [],
-  level,
+  maxExampleWords,
   style,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -195,11 +195,15 @@ export function TappableText({
       setLoading(true);
 
       const sentence = sentences[words[wi]?.sentence ?? -1];
-      const found = await lookupWord(word, { entry: match?.entry, sentence, level });
+      const found = await lookupWord(word, {
+        entry: match?.entry,
+        sentence,
+        maxExampleWords,
+      });
       setResult(found);
       setLoading(false);
     },
-    [findEntry, sentences, words, level]
+    [findEntry, sentences, words, maxExampleWords]
   );
 
   function close() {
@@ -367,9 +371,11 @@ export function TappableText({
                         yapılarına göre kuruluyor; sözlükten gelen herkese aynı.
                         Kullanıcı hangisine baktığını bilmeli. */}
                     <Text style={styles.blockTitle}>
-                      {result.examplesFromTeacher
+                      {result.exampleSource === 'teacher'
                         ? 'Örnekler · sana göre'
-                        : 'Örnekler · genel sözlük'}
+                        : result.exampleSource === 'passage'
+                          ? 'Örnek · bu metinden'
+                          : 'Örnekler · genel sözlük'}
                     </Text>
                     {result.examples.slice(0, 3).map((ex) => (
                       <Pressable

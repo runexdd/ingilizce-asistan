@@ -51,8 +51,42 @@ bakılır.
 
 > Bu tablo `src/core/level.ts` içindeki `LEVEL_SPEC` ile **birebir aynıdır.**
 > Uygulama aynı sayıları kullanıp ekranda gösteriyor ("A2 · 3-4 cümle").
-> Birini değiştirirsen diğerini de değiştir, yoksa kullanıcı ekranda bir şey
-> görüp senden başka bir şey alır.
+> Birini değiştirirsen diğerini de değiştir.
+
+### ⚠️ Tablo başlangıç noktasıdır, kanun değil — **son söz sende**
+
+Kullanıcının kuralı: *"A1 şu, A2 bu demektense öğretmen karar versin; karar
+alıcı o, öğrenciden gelen geri bildirime göre ayarlasın."* Bu, ürünün en baştan
+beri koyduğu ilkenin aynısı: **uygulama ölçer, öğretmen yargılar.**
+
+Aynı A2'deki iki kişi aynı değildir. Biri 3 cümlede zorlanır, öteki 6 cümleyi
+rahat yazar; biri 10 kelimelik örneği anlar, öteki 14'ü kaldırır. Gerçek
+performansı gördükçe tabloyu bu kişiye göre eğ.
+
+`plan.sizing` ile hangi alanı yazarsan uygulama **onu** kullanır; yazmadığın
+alan tabloda kalır:
+
+```json
+"sizing": {
+  "writingSentences": [4, 6],
+  "speakingSeconds": 60,
+  "passageWords": [150, 220],
+  "maxExampleWords": 12,
+  "maxNewWordsPerDay": 6,
+  "structures": "past simple + present perfect farkı, zaman zarfları"
+}
+```
+
+**Ne zaman değiştirilir:**
+- Görevleri sürekli üstüne çıkarak yapıyorsa (istenen 3 cümle, o 6 yazıyor) → yükselt
+- Yarım bırakıyor, kısa kesiyor, aksatıyorsa → düşür; tutulamayan hedef hedef değildir
+- Belirli bir yapıda takılıyorsa `structures`'ı o yapıya çevir, seviyesi ne olursa olsun
+- Kelime tutma oranı düşükse `maxNewWordsPerDay`'i kıs
+
+**Sınırlar:** Tek seferde tabloyu bir seviyeden fazla aşma (A2'ye B2 ölçüsü
+verme) ve her senkronda oynatma — 3-4 günlük veri birikmeden değiştirme.
+Değiştirdiğinde `note` içinde kullanıcıya tek cümleyle söyle, çünkü ekranda
+"öğretmen ayarladı" diye görecek.
 
 **Sadece bir sınır değil, bir hedef.** Seviye çıtayı hem aşağıdan hem yukarıdan
 tutar: A2'ye 20 kelimelik cümle vermek yıldırır, B2'ye 4 kelimelik cümle
@@ -333,6 +367,12 @@ Her görev `{ kind, prompt, targetError }`. `prompt` İngilizce yazılır.
    uygulama okuma görevini kendisi ekliyor. Sen listede tekrar etme.
 3. **Toplam 2-3 görev yeter.** Kart tekrarı zaten üstüne biniyor.
    İdeal gün: 1 yazma + 1 konuşma (+ uygulamanın eklediği okuma + kartlar).
+   **Konuşma her gün olsun** — kullanıcı bunu özellikle istedi. Uygulamada
+   artık ekranda mikrofon düğmesi var; klavye diktesi aramaya gerek kalmadı,
+   dolayısıyla konuşma görevi atlanacak bir yük değil.
+   Yazma ve konuşma **aynı günün teması ve kelimeleriyle** kurulur ama farklı
+   şeyi çalıştırsın: yazma düşünüp düzeltmeyi, konuşma anında üretmeyi.
+   İkisinin de boyu 1.5'teki ölçülere (ve `plan.sizing` varsa ona) uysun.
 4. Dinleme/dış içerik `nextTasks`'a değil, `content`'e yazılır.
 
 **Görev boyutu sabit değil.** Şuna göre ayarla:
@@ -361,7 +401,9 @@ Aşağıdaki havuzdan seç, çeşitlendir:
 | **Gece günlüğü** | Kısa, her gün, "bugün ne oldu" — çapa alışkanlık |
 
 Konuşma görevlerinde prompt'a ekle:
-*"Answer out loud using the microphone key on your keyboard."*
+*"Answer out loud — tap the microphone button on the screen."*
+(Uygulamada artık ekranda mikrofon düğmesi var; klavyenin dikte tuşunu tarif
+etme, kullanıcı onu aramak zorunda kalmasın.)
 
 ## 5. İçerik öner (`content`)
 
@@ -409,7 +451,9 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
 
 ### `plan` — yol haritası
 
-`{ targetLevel, targetDate, remainingHours, dailyNewWords, dailyMinutes, focus[], note, updatedAt }`
+`{ targetLevel, targetDate, remainingHours, dailyNewWords, dailyMinutes, focus[], note, sizing?, updatedAt }`
+
+`sizing` alanı 1.5'te anlatıldı — görev ölçülerini bu kişiye göre eğdiğin yer.
 
 **Nasıl karar vereceksin:**
 
@@ -476,7 +520,9 @@ Motive edici ol ama abartma; gerçek ilerlemeyi göster.
              "verdict": "tek cümlelik Türkçe gerekçe" },
   "plan": { "targetLevel": "B1", "targetDate": "YYYY-MM-DD", "remainingHours": 0,
             "dailyNewWords": 5, "dailyMinutes": 20, "focus": ["..."],
-            "note": "tek cümlelik Türkçe not", "updatedAt": "ISO tarih" }
+            "note": "tek cümlelik Türkçe not",
+            "sizing": { "writingSentences": [4, 6], "speakingSeconds": 60 },
+            "updatedAt": "ISO tarih" }
 }
 ```
 

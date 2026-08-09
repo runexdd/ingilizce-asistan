@@ -8,7 +8,6 @@
  */
 
 import { IRREGULAR_FORMS } from './irregular';
-import { specOf } from './level';
 
 /** Sözlükten dönen tek bir Türkçe karşılık adayı */
 export interface Candidate {
@@ -173,10 +172,11 @@ export function filterExamples(
   examples: string[] | undefined,
   word: string,
   lemma: string | undefined,
-  level: string | undefined
+  /** Seviyeye (ve öğretmenin ayarına) göre üst sınır */
+  maxWords: number
 ): string[] | undefined {
   if (!examples?.length) return undefined;
-  const limit = specOf(level).maxExampleWords;
+  const limit = maxWords;
   const stems = [word, lemma]
     .filter((w): w is string => !!w)
     .map((w) => w.slice(0, 4).toLowerCase());

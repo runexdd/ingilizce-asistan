@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +17,12 @@ import {
 } from '../../src/core/level';
 import { pickPassage, type ReadingPassage } from '../../src/core/reading';
 import { speakEnglish, stopSpeaking } from '../../src/core/speech';
+import {
+  describeSpeechError,
+  isSpeechInputSupported,
+  startSpeechInput,
+  type SpeechInputHandle,
+} from '../../src/core/speechInput';
 import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
 import { TappableText } from '../../src/ui/TappableText';
@@ -67,7 +73,7 @@ function WritingTask({ long }: { long: boolean }) {
    * Sabit "3-4 cümle yaz" demek A1'de yıldırır, B2'de hiçbir şey öğretmez.
    */
   const level = data.profile.level;
-  const spec = specOf(level);
+  const spec = specOf(level, data.plan?.sizing);
   const [minSentences, maxSentences] = spec.writingSentences;
   const fallbackSentences = long ? maxSentences + 2 : minSentences;
 
@@ -109,7 +115,7 @@ function WritingTask({ long }: { long: boolean }) {
           label="Yazma görevi"
           text={prompt}
           focus={suggested?.targetError}
-          size={`${level} · ${describeWritingSize(level)} · ${spec.structures}`}
+          size={`${level} · ${describeWritingSize(level, data.plan?.sizing)} · ${spec.structures}`}
         />
         <TargetWords words={todayWords} />
 
@@ -143,11 +149,61 @@ function WritingTask({ long }: { long: boolean }) {
 
 /* ----------------------------------------------------------------- okuma */
 
+/**
+ * Sesli okuma hızları.
+ *
+ * Doğru hız kişiye ve güne göre değişiyor: yeni bir metni ilk dinlerken yavaş,
+ * ikinci turda normal, alışılmış bir bölümü tekrar dinlerken hızlı. Sabit bir
+ * hız bunların hiçbirine uymuyor, o yüzden seçim kullanıcıda.
+ */
+const SPEECH_RATES = [0.5, 0.7, 0.85, 1, 1.25, 1.5];
+const DEFAULT_RATE = 0.85;
+
+function SpeedPicker({
+  rate,
+  onChange,
+}: {
+  rate: number;
+  onChange: (rate: number) => void;
+}) {
+  return (
+    <View style={styles.speedRow}>
+      <Text style={styles.speedLabel}>Okuma hızı</Text>
+      {SPEECH_RATES.map((option) => {
+        const active = Math.abs(option - rate) < 0.001;
+        return (
+          <Pressable
+            key={option}
+            style={[styles.speedChip, active && styles.speedChipActive]}
+            onPress={() => onChange(option)}
+          >
+            <Text style={[styles.speedChipText, active && styles.speedChipTextActive]}>
+              {option}x
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function ReadingTask() {
   const { data, update } = useStore();
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [checked, setChecked] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+
+  const rate = data.profile.speechRate ?? DEFAULT_RATE;
+
+  /** Hız kalıcı — her metinde yeniden seçmek zorunda kalmasın. */
+  function changeRate(next: number) {
+    stopSpeaking();
+    setSpeaking(false);
+    update((current) => ({
+      ...current,
+      profile: { ...current.profile, speechRate: next },
+    }));
+  }
 
   // Öğretmenin bugün için yazdığı bölüm — en öncelikli kaynak
   const lesson = data.lesson;
@@ -196,6 +252,8 @@ function ReadingTask() {
           </Pressable>
         </View>
 
+        <SpeedPicker rate={rate} onChange={changeRate} />
+
         <Text style={styles.tapHint}>
           Altı çizili kelimelere dokun — anlamını görür, tek dokunuşla kartlarına
           eklersin.
@@ -209,7 +267,7 @@ function ReadingTask() {
           text={lessonPassage.text}
           glossary={lesson?.glossary ?? []}
           knownWords={data.cards.map((c) => c.word)}
-          level={data.profile.level}
+          maxExampleWords={specOf(data.profile.level, data.plan?.sizing).maxExampleWords}
           onAddCard={(word, meaning) =>
             update((current) => addCard(current, word, meaning))
           }
@@ -285,6 +343,7 @@ function ReadingTask() {
     }
     setSpeaking(true);
     void speakEnglish(text, {
+      rate,
       onDone: () => setSpeaking(false),
       onError: () => setSpeaking(false),
     });
@@ -338,6 +397,8 @@ function ReadingTask() {
           </Text>
         </Pressable>
       </View>
+
+      <SpeedPicker rate={rate} onChange={changeRate} />
 
       <Text style={styles.passageText}>{passage.text}</Text>
 
@@ -403,8 +464,15 @@ function SpeakingTask() {
   const [submitted, setSubmitted] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
+  /* --- mikrofon --- */
+  const [recording, setRecording] = useState(false);
+  const [interim, setInterim] = useState('');
+  const [micError, setMicError] = useState<string | null>(null);
+  const micRef = useRef<SpeechInputHandle | null>(null);
+  const micSupported = useMemo(() => isSpeechInputSupported(), []);
+
   const level = data.profile.level;
-  const spec = specOf(level);
+  const spec = specOf(level, data.plan?.sizing);
 
   const suggested = data.suggestedTasks.find((t) => t.kind === 'speaking');
   const prompt =
@@ -428,9 +496,45 @@ function SpeakingTask() {
     });
   }
 
+  /**
+   * Mikrofonu aç/kapat.
+   *
+   * İzin ilk basışta tarayıcı tarafından bir kez isteniyor; kullanıcı onay
+   * verdikten sonra tek dokunuşla çalışıyor. Tanınan cümleler kutunun sonuna
+   * ekleniyor, böylece konuşurken yazdıklarını görüyor ve gerekirse elle
+   * düzeltebiliyor.
+   */
+  function toggleMic() {
+    if (recording) {
+      micRef.current?.stop();
+      return;
+    }
+    setMicError(null);
+    setInterim('');
+    setRecording(true);
+    micRef.current = startSpeechInput({
+      onFinal: (chunk) => {
+        if (!chunk) return;
+        setText((current) => (current ? `${current.trim()} ${chunk}` : chunk));
+        setInterim('');
+      },
+      onInterim: setInterim,
+      onError: (code) => setMicError(describeSpeechError(code)),
+      onStop: () => {
+        setRecording(false);
+        setInterim('');
+        micRef.current = null;
+      },
+    });
+  }
+
+  // Ekrandan çıkarken mikrofon açık kalmasın
+  useEffect(() => () => micRef.current?.stop(), []);
+
   function handleSubmit() {
     const response = text.trim();
     if (!response) return;
+    micRef.current?.stop();
     update((current) => {
       const withTask = saveTaskResponse(current, {
         kind: 'speaking',
@@ -456,7 +560,7 @@ function SpeakingTask() {
           label="Konuşma görevi"
           text={prompt}
           focus={suggested?.targetError}
-          size={`${level} · ${describeSpeakingSize(level)} · ${spec.structures}`}
+          size={`${level} · ${describeSpeakingSize(level, data.plan?.sizing)} · ${spec.structures}`}
         />
         <TargetWords words={todayWords} />
 
@@ -466,13 +570,42 @@ function SpeakingTask() {
           </Text>
         </Pressable>
 
+        {micSupported ? (
+          <>
+            <Pressable
+              style={[styles.micButton, recording && styles.micButtonActive]}
+              disabled={submitted}
+              onPress={toggleMic}
+            >
+              <Text style={[styles.micText, recording && styles.micTextActive]}>
+                {recording ? '⏹  Kaydı durdur' : '🎤  Konuşmaya başla'}
+              </Text>
+            </Pressable>
+
+            <Text style={styles.micHint}>
+              {recording
+                ? interim
+                  ? `“${interim}…”`
+                  : 'Dinliyorum — İngilizce konuş, söylediklerin aşağıya yazılıyor.'
+                : 'İlk basışta telefon mikrofon izni soracak; bir kez izin verince hep tek dokunuş.'}
+            </Text>
+
+            {micError && <Text style={styles.micError}>{micError}</Text>}
+          </>
+        ) : (
+          <View style={styles.howtoBox}>
+            <Text style={styles.howtoTitle}>Nasıl yapılır</Text>
+            <Text style={styles.howtoText}>
+              Bu tarayıcı uygulama içi mikrofonu desteklemiyor. Aşağıdaki kutuya
+              dokun, klavye açılsın; klavyenin altındaki{' '}
+              <Text style={styles.bold}>mikrofon simgesine</Text> bas ve cevabını
+              sesli söyle.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.howtoBox}>
-          <Text style={styles.howtoTitle}>Nasıl yapılır</Text>
           <Text style={styles.howtoText}>
-            Aşağıdaki kutuya dokun, klavye açılsın. Klavyenin altındaki{' '}
-            <Text style={styles.bold}>mikrofon simgesine</Text> bas ve cevabını{' '}
-            <Text style={styles.bold}>sesli söyle</Text>. Telefon konuştuğunu
-            yazıya çevirecek.{'\n\n'}
             Yazarak değil, <Text style={styles.bold}>konuşarak</Text> cevapla —
             amaç düşünmeden üretmek. Telefonun yanlış yazdığı kelimeler telaffuz
             sinyalidir, öğretmen onları ayrıca takip edecek.
@@ -483,7 +616,7 @@ function SpeakingTask() {
           style={styles.input}
           multiline
           editable={!submitted}
-          placeholder="Mikrofona basıp konuş..."
+          placeholder="Yukarıdaki mikrofona bas ve konuş..."
           placeholderTextColor={colors.muted}
           value={text}
           onChangeText={setText}
@@ -714,6 +847,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   speakButtonText: { fontSize: 14, color: colors.accent, fontWeight: '600' },
+
+  speedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs + 2,
+    marginTop: spacing.sm + 2,
+  },
+  speedLabel: { fontSize: 13, color: colors.muted, marginRight: spacing.xs },
+  speedChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    backgroundColor: colors.card,
+  },
+  speedChipActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  speedChipText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  speedChipTextActive: { color: colors.accent },
   passageText: {
     fontSize: 16,
     color: colors.text,
@@ -756,4 +909,30 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs + 2,
   },
   howtoText: { fontSize: 14, color: colors.muted, lineHeight: 21 },
+
+  micButton: {
+    marginTop: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    backgroundColor: colors.card,
+  },
+  micButtonActive: { backgroundColor: '#D92D20', borderColor: '#D92D20' },
+  micText: { fontSize: 16, fontWeight: '700', color: colors.accent },
+  micTextActive: { color: '#FFFFFF' },
+  micHint: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  micError: {
+    fontSize: 13,
+    color: '#D92D20',
+    lineHeight: 19,
+    marginTop: spacing.sm,
+  },
 });

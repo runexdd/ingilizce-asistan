@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import {
   describeSpeakingSize,
   describeWritingSize,
+  isTeacherTuned,
   specOf,
 } from '../../src/core/level';
 import { SKILL_LABELS, type QuestionSkill } from '../../src/core/placement';
@@ -51,6 +52,10 @@ export default function SettingsScreen() {
   const router = useRouter();
   const profile = data.profile;
   const sync = data.sync;
+
+  /** Öğretmenin ayarladığı ölçüler varsa onlar geçerli, yoksa seviye tablosu */
+  const sizing = data.plan?.sizing;
+  const levelSpec = specOf(profile.level, sizing);
 
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [tokenInput, setTokenInput] = useState('');
@@ -203,12 +208,16 @@ export default function SettingsScreen() {
           <View style={styles.rowMain}>
             <Text style={styles.label}>Bu seviyede</Text>
             <Text style={styles.hint}>
-              Yazma {describeWritingSize(profile.level)} · konuşma{' '}
-              {describeSpeakingSize(profile.level)} · okuma{' '}
-              {specOf(profile.level).passageWords.join('-')} kelime · günde en fazla{' '}
-              {specOf(profile.level).maxNewWordsPerDay} yeni kelime
+              Yazma {describeWritingSize(profile.level, sizing)} · konuşma{' '}
+              {describeSpeakingSize(profile.level, sizing)} · okuma{' '}
+              {levelSpec.passageWords.join('-')} kelime · günde en fazla{' '}
+              {levelSpec.maxNewWordsPerDay} yeni kelime
               {'\n'}
-              Çalışılan yapılar: {specOf(profile.level).structures}
+              Çalışılan yapılar: {levelSpec.structures}
+              {'\n'}
+              {isTeacherTuned(sizing)
+                ? 'Bu ölçüleri öğretmen senin performansına göre ayarladı.'
+                : 'Şimdilik seviye varsayılanları; öğretmen performansına göre değiştirebilir.'}
             </Text>
           </View>
         </View>

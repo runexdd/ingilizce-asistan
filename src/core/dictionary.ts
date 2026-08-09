@@ -80,13 +80,17 @@ export interface LookupResult {
   /** Örnek cümleler */
   examples?: string[];
   /**
-   * Örnekleri öğretmen mi yazdı?
+   * Örnek nereden geldi?
    *
-   * Öğretmenin yazdıkları kullanıcının seviyesine, zayıf yapılarına ve gününün
-   * temasına göre kurulur — kişiye özeldir. İnternetten gelenler herkese
-   * aynıdır. Panelde ayrımı belli edilir ki kullanıcı neye baktığını bilsin.
+   * `teacher`    — kullanıcının seviyesine ve zayıf yapılarına göre yazılmış,
+   *                kişiye özel. En iyisi.
+   * `passage`    — okunan metnin kendi cümlesi. Kelime tam o anlamda ve
+   *                seviyeye uygun geçiyor, yani güvenilir.
+   * `dictionary` — internetteki genel sözlükten. Herkese aynı gelir.
+   *
+   * Panelde belirtiliyor ki kullanıcı neye baktığını bilsin.
    */
-  examplesFromTeacher?: boolean;
+  exampleSource?: 'teacher' | 'passage' | 'dictionary';
   /** İngilizce tanım (ek bağlam) */
   definition?: string;
   /** Çekimli hâlin sözlük hâli: "saw" → "see" */
@@ -314,8 +318,70 @@ interface LookupOptions {
   entry?: GlossaryEntry | null;
   /** Kelimenin geçtiği cümle — bağlam eşleştirmesi bunun üstünden yapılır */
   sentence?: string;
-  /** Kullanıcının CEFR seviyesi — örnek cümleleri buna göre süzülür */
-  level?: string;
+  /** Örnek cümle üst sınırı; seviyeden ve öğretmenin ayarından geliyor */
+  maxExampleWords?: number;
+}
+
+/** İnternetten toplanan ham malzeme — hem sözlükte olan hem olmayan kelimeler için */
+interface OnlineData {
+  candidates: Candidate[];
+  defSurface?: DefGroup[];
+  defLemma?: DefGroup[];
+}
+
+/**
+ * Kelimenin çevrimiçi malzemesini toplar; önbellek varsa oradan verir.
+ * Anlam seçimi burada yapılmaz — bağlam eşleştirmesi cümleye bağlı olduğu
+ * için sonuç değil, **adaylar** saklanır.
+ */
+async function gatherOnline(word: string, lemma?: string): Promise<OnlineData | null> {
+  const cache = await loadCache();
+  const cached = cache[word];
+  if (cached) {
+    return {
+      candidates: decodeCandidates(cached.candidates),
+      defSurface: cached.defSurface,
+      defLemma: cached.defLemma,
+    };
+  }
+
+  const alt = altBaseForm(word);
+  const [surfaceCands, lemmaCands, altCands, defSurface, defLemma] = await Promise.all([
+    wordCandidates(word, false),
+    lemma ? wordCandidates(lemma, true) : Promise.resolve([]),
+    alt && alt !== lemma ? wordCandidates(alt, true) : Promise.resolve([]),
+    defineOnline(word),
+    lemma ? defineOnline(lemma) : Promise.resolve(null),
+  ]);
+
+  const candidates = dedupe([...surfaceCands, ...lemmaCands, ...altCands]);
+  if (candidates.length === 0 && !defSurface && !defLemma) return null;
+
+  cache[word] = {
+    meaning: pickDefault(candidates, !!lemma)?.term ?? null,
+    candidates: encodeCandidates(candidates),
+    defSurface: defSurface ?? undefined,
+    defLemma: defLemma ?? undefined,
+    baseForm: lemma,
+  };
+  scheduleSave();
+
+  return { candidates, defSurface: defSurface ?? undefined, defLemma: defLemma ?? undefined };
+}
+
+/**
+ * Metnin kendi cümlesi bir örnektir.
+ *
+ * Öğretmen o cümleyi kullanıcının seviyesinde yazdı ve kelime orada tam
+ * aradığımız anlamda geçiyor. Yani elimizdeki **en güvenilir** örnek.
+ * Sözlükte örnek bulunamadığında buna düşülüyor; "worth" gibi kelimelerin
+ * örneksiz kalmasının sebebi buydu.
+ */
+function passageExample(sentence: string | undefined): string[] | undefined {
+  const trimmed = sentence?.trim();
+  if (!trimmed) return undefined;
+  const words = trimmed.split(/\s+/);
+  return words.length >= 3 && words.length <= 30 ? [trimmed] : undefined;
 }
 
 function encodeCandidates(cands: Candidate[]): string[] {
@@ -344,7 +410,8 @@ export async function lookupWord(
   const word = normalizeWord(raw);
   if (!word) return { word: raw, meaning: null, source: 'none' };
 
-  const { entry, sentence, level } = options;
+  const { entry, sentence } = options;
+  const maxExampleWords = options.maxExampleWords ?? 14;
   const lemma = baseFormOf(word);
 
   // Cümle çevirisi her durumda paralel istenir — bağlamı o gösteriyor
@@ -353,94 +420,92 @@ export async function lookupWord(
       ? translateSentence(sentence)
       : Promise.resolve(null);
 
-  /* 1. Öğretmenin sözlüğü — bağlamı bilen tek kaynak */
+  /* 1. Öğretmenin sözlüğü — anlamın tek kaynağı */
   if (entry?.meaning) {
+    const isPhrase = entry.word.trim().includes(' ');
+    const teacherExamples = entry.examples?.length
+      ? entry.examples.slice(0, 3)
+      : undefined;
+
     /**
-     * ⛔ Öğretmen bir kelimeye karşılık yazdıysa o kelimede internete
-     * **hiç çıkılmaz.**
-     *
+     * Anlam her zaman öğretmenden gelir; internet **anlamın üstüne yazmaz.**
      * Sebebi canlı testte görüldü: metinde "felt" = *hissetti* iken sözlük
-     * servisi "felt"i kumaş (keçe) sanıp örnek olarak *"to felt the cylinder
-     * of a steam engine"* döndürdü. Aynı şey kalıplarda da oluyordu ("every
-     * evening" için eş anlamlı diye *eve*). Servis dokunulan kelimenin
-     * **hangi anlamda** kullanıldığını bilmiyor; öğretmen biliyor.
+     * servisi "felt"i kumaş (keçe) sanıyordu.
      *
-     * Bu yüzden burada gösterilen her şey öğretmenden gelir. Öğretmen örnek
-     * yazmadıysa örnek gösterilmez — yanlış örnek, örneksizlikten kötüdür.
-     * (`ogretmen.md` artık her sözlük girdisine örnek yazılmasını şart
-     * koşuyor, dolayısıyla bu boşluk kapanıyor.)
-     *
-     * Yan fayda: panel ağ beklemeden, anında ve çevrimdışı açılıyor.
+     * Örnek cümle ise ayrı bir mesele. Öğretmen yazdıysa o kullanılır — en
+     * iyisi odur. Yazmadıysa boş bırakmak da doğru değil ("worth" kelimesine
+     * bakıp hiç örnek görmemek gibi); o zaman:
+     *   1. sözlükten **sözcük türü eşleşen** örnekler denenir (kalıplarda
+     *      denenmez, servis kalıbı tanımıyor),
+     *   2. o da yoksa metnin kendi cümlesi örnek olarak gösterilir — kelime
+     *      orada tam aradığımız anlamda ve kullanıcının seviyesinde geçiyor.
      */
+    let examples = teacherExamples;
+    let exampleSource: LookupResult['exampleSource'] = teacherExamples
+      ? 'teacher'
+      : undefined;
+    let synonym = entry.synonym;
+    let definition: string | undefined;
+
+    if (!teacherExamples && !isPhrase) {
+      const online = await gatherOnline(word, lemma);
+      if (online) {
+        const sentenceTr = await sentencePromise;
+        const picked =
+          pickByContext(online.candidates, sentenceTr) ??
+          pickDefault(online.candidates, !!lemma);
+        const def = pickDefGroup(
+          picked?.pos,
+          online.defSurface,
+          online.defLemma,
+          isIrregularForm(word)
+        );
+        const filtered = filterExamples(def?.examples, word, lemma, maxExampleWords);
+        if (filtered) {
+          examples = filtered;
+          exampleSource = 'dictionary';
+        }
+        synonym = synonym ?? def?.synonym;
+        definition = def?.definition;
+      }
+    }
+
+    if (!examples) {
+      examples = passageExample(sentence);
+      if (examples) exampleSource = 'passage';
+    }
+
     return {
       word: entry.word,
-      phrase: entry.word.trim().includes(' ') ? entry.word : undefined,
+      phrase: isPhrase ? entry.word : undefined,
       meaning: entry.meaning,
       source: 'glossary',
       otherMeanings: entry.senses?.length ? entry.senses : undefined,
-      synonym: entry.synonym,
-      examples: entry.examples?.length ? entry.examples.slice(0, 3) : undefined,
-      examplesFromTeacher: !!entry.examples?.length,
+      synonym,
+      examples,
+      exampleSource,
+      definition,
       sentenceTr: (await sentencePromise) ?? undefined,
     };
   }
 
-  /* 2. Önbellek — adaylar saklandığı için bağlam eşleştirmesi burada da çalışır */
-  const cache = await loadCache();
-  const cached = cache[word];
-  if (cached) {
-    const sentenceTr = await sentencePromise;
-    return buildResult({
-      word,
-      candidates: decodeCandidates(cached.candidates),
-      fallback: cached.meaning,
-      lemma,
-      level,
-      sentenceTr,
-      defSurface: cached.defSurface,
-      defLemma: cached.defLemma,
-      source: 'cache',
-    });
-  }
+  /* 2. Sözlükte olmayan kelime — internetten anlam da dahil her şey */
+  const online = await gatherOnline(word, lemma);
+  const sentenceTr = await sentencePromise;
 
-  /* 3. İnternet — bütün sorgular aynı anda gider */
-  const alt = altBaseForm(word);
-  const [surfaceCands, lemmaCands, altCands, defSurface, defLemma, sentenceTr] =
-    await Promise.all([
-      wordCandidates(word, false),
-      lemma ? wordCandidates(lemma, true) : Promise.resolve([]),
-      alt && alt !== lemma ? wordCandidates(alt, true) : Promise.resolve([]),
-      defineOnline(word),
-      lemma ? defineOnline(lemma) : Promise.resolve(null),
-      sentencePromise,
-    ]);
-
-  const candidates = dedupe([...surfaceCands, ...lemmaCands, ...altCands]);
-
-  if (candidates.length === 0 && !defSurface && !defLemma) {
+  if (!online) {
     return { word, meaning: null, source: 'none', sentenceTr: sentenceTr ?? undefined };
   }
 
-  const fallback = pickDefault(candidates, !!lemma)?.term ?? null;
-
-  cache[word] = {
-    meaning: fallback,
-    candidates: encodeCandidates(candidates),
-    defSurface: defSurface ?? undefined,
-    defLemma: defLemma ?? undefined,
-    baseForm: lemma,
-  };
-  scheduleSave();
-
   return buildResult({
     word,
-    candidates,
-    fallback,
+    candidates: online.candidates,
     lemma,
-    level,
+    maxExampleWords,
+    sentence,
     sentenceTr,
-    defSurface: defSurface ?? undefined,
-    defLemma: defLemma ?? undefined,
+    defSurface: online.defSurface,
+    defLemma: online.defLemma,
     source: 'online',
   });
 }
@@ -449,9 +514,10 @@ export async function lookupWord(
 function buildResult(input: {
   word: string;
   candidates: Candidate[];
-  fallback: string | null;
   lemma?: string;
-  level?: string;
+  maxExampleWords: number;
+  /** Metindeki cümle — sözlükte örnek yoksa örnek olarak kullanılır */
+  sentence?: string;
   sentenceTr: string | null;
   /** Yazıldığı hâlin sözlük bilgisi ("felt" → keçe + …) */
   defSurface?: DefGroup[];
@@ -460,11 +526,8 @@ function buildResult(input: {
   source: LookupSource;
 }): LookupResult {
   const contextual = pickByContext(input.candidates, input.sentenceTr);
-  const picked =
-    contextual ??
-    input.candidates.find((c) => c.term === input.fallback) ??
-    pickDefault(input.candidates, !!input.lemma);
-  const chosen = picked?.term ?? input.fallback ?? null;
+  const picked = contextual ?? pickDefault(input.candidates, !!input.lemma);
+  const chosen = picked?.term ?? null;
 
   // Tanım/örnek, seçilen anlamın **sözcük türüyle** eşleşen bölümden alınır
   const def = pickDefGroup(
@@ -474,6 +537,14 @@ function buildResult(input: {
     isIrregularForm(input.word)
   );
 
+  const filtered = filterExamples(
+    def?.examples,
+    input.word,
+    input.lemma,
+    input.maxExampleWords
+  );
+  const examples = filtered ?? passageExample(input.sentence);
+
   return {
     word: input.word,
     meaning: chosen ? matchCase(chosen, input.word) : null,
@@ -481,8 +552,8 @@ function buildResult(input: {
     fromContext: !!contextual,
     otherMeanings: otherMeaningsOf(input.candidates, chosen),
     synonym: def?.synonym,
-    examples: filterExamples(def?.examples, input.word, input.lemma, input.level),
-    examplesFromTeacher: false,
+    examples,
+    exampleSource: examples ? (filtered ? 'dictionary' : 'passage') : undefined,
     definition: def?.definition,
     baseForm: input.lemma,
     sentenceTr: input.sentenceTr ?? undefined,

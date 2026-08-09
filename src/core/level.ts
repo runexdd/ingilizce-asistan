@@ -110,6 +110,28 @@ export const LEVEL_SPEC: Record<CEFRLevel, LevelSpec> = {
   },
 };
 
+/**
+ * Öğretmenin bu öğrenci için verdiği ölçüler — tablodaki varsayılanların
+ * üstüne yazar.
+ *
+ * **Neden var:** Tablo bir başlangıç noktası, kanun değil. Kullanıcının kuralı
+ * net: *"A1 şu, A2 bu demektense öğretmen karar versin; karar alıcı o,
+ * öğrencilerden gelen geri bildirime göre ayarlasın."* Aynı A2'deki iki kişi
+ * aynı değildir — biri 3 cümlede zorlanır, öteki 6 cümleyi rahat yazar.
+ * Öğretmen `plan.sizing` ile bunu her senkronda güncelleyebilir.
+ *
+ * Uygulama hiçbir zaman bu değerleri kendi kendine değiştirmez; sadece
+ * öğretmen yazarsa uygular. Yazmazsa tabloya düşer.
+ */
+export interface LevelSizing {
+  writingSentences?: [number, number];
+  speakingSeconds?: number;
+  passageWords?: [number, number];
+  maxExampleWords?: number;
+  maxNewWordsPerDay?: number;
+  structures?: string;
+}
+
 /** Bilinmeyen/boş seviye geldiğinde kullanılan orta nokta. */
 export const DEFAULT_LEVEL: CEFRLevel = 'B1';
 
@@ -123,9 +145,33 @@ export function levelIndex(raw: string | undefined | null): number {
   return LEVELS.indexOf(toLevel(raw));
 }
 
-/** Seviyeye ait ayarlar; seviye tanınmazsa varsayılana düşer. */
-export function specOf(raw: string | undefined | null): LevelSpec {
-  return LEVEL_SPEC[toLevel(raw)];
+/**
+ * Bu öğrenci için geçerli ölçüler.
+ *
+ * Öğretmen bir alanı doldurmuşsa o kazanır; doldurmadıklarında seviye
+ * tablosundaki varsayılan kalır. Uygulamadaki **tek** okuma noktası burasıdır
+ * — ekranların doğrudan `LEVEL_SPEC`'e bakması, öğretmenin kararını görmezden
+ * gelmek demek olur.
+ */
+export function specOf(
+  raw: string | undefined | null,
+  sizing?: LevelSizing | null
+): LevelSpec {
+  const base = LEVEL_SPEC[toLevel(raw)];
+  if (!sizing) return base;
+  return {
+    writingSentences: sizing.writingSentences ?? base.writingSentences,
+    speakingSeconds: sizing.speakingSeconds ?? base.speakingSeconds,
+    passageWords: sizing.passageWords ?? base.passageWords,
+    maxExampleWords: sizing.maxExampleWords ?? base.maxExampleWords,
+    maxNewWordsPerDay: sizing.maxNewWordsPerDay ?? base.maxNewWordsPerDay,
+    structures: sizing.structures ?? base.structures,
+  };
+}
+
+/** Öğretmen bu alanda karar vermiş mi — ekranda belirtmek için. */
+export function isTeacherTuned(sizing?: LevelSizing | null): boolean {
+  return !!sizing && Object.values(sizing).some((v) => v !== undefined);
 }
 
 /** Bir basamak yukarısı — hedef seviye gösterimi için. */
@@ -135,12 +181,18 @@ export function nextLevel(raw: string | undefined | null): CEFRLevel | null {
 }
 
 /** "3-4 cümle" gibi ekranda gösterilecek metin. */
-export function describeWritingSize(raw: string | undefined | null): string {
-  const [min, max] = specOf(raw).writingSentences;
+export function describeWritingSize(
+  raw: string | undefined | null,
+  sizing?: LevelSizing | null
+): string {
+  const [min, max] = specOf(raw, sizing).writingSentences;
   return `${min}-${max} cümle`;
 }
 
 /** "yaklaşık 45 saniye" gibi ekranda gösterilecek metin. */
-export function describeSpeakingSize(raw: string | undefined | null): string {
-  return `yaklaşık ${specOf(raw).speakingSeconds} saniye`;
+export function describeSpeakingSize(
+  raw: string | undefined | null,
+  sizing?: LevelSizing | null
+): string {
+  return `yaklaşık ${specOf(raw, sizing).speakingSeconds} saniye`;
 }

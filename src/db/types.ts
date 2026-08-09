@@ -6,6 +6,8 @@
  * ileride gerçek uygulamada tamamen aynı şekilde çalışması.
  */
 
+import type { LevelSizing } from '../core/level';
+
 export interface Profile {
   /** CEFR seviyesi: A1, A2, B1, B2, C1, C2 — yerleştirme sınavı belirler */
   level: string;
@@ -24,6 +26,13 @@ export interface Profile {
    * Boşsa uygulama en iyi puanlı sesi otomatik seçer.
    */
   voiceId?: string;
+  /**
+   * Sesli okuma hızı (1.0 normal).
+   *
+   * Kullanıcı seçiyor: dinlerken takip edemediği hız öğretmiyor, çok yavaş
+   * olan da robotik duyuluyor. Doğru hız kişiye ve güne göre değişir.
+   */
+  speechRate?: number;
 }
 
 export interface Card {
@@ -164,6 +173,14 @@ export interface TeacherPlan {
   focus: string[];
   /** Öğretmenin kullanıcıya kısa notu (Türkçe) */
   note: string;
+  /**
+   * Görev ölçüleri — seviye tablosundaki varsayılanların üstüne yazar.
+   *
+   * Seviye tablosu bir başlangıç noktasıdır; son sözü öğretmen söyler.
+   * Aynı seviyedeki iki kişi aynı değildir, öğretmen gerçek performansa
+   * bakıp burayı günceller. Boş bırakılan alanlar tabloda kalır.
+   */
+  sizing?: LevelSizing;
   updatedAt: string;
 }
 
