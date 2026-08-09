@@ -174,10 +174,22 @@ export function AutoSync() {
     }
     if (signature === lastSignature.current) return;
 
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
+    /**
+     * ⚠️ Çok erken gelen değişiklik **düşürülmez, ertelenir.**
+     *
+     * Önce "20 saniye dolmadıysa çık" deniyordu; ama efekt yalnızca imza
+     * değiştiğinde çalıştığı için o değişiklik bir daha hiç gönderilmiyordu.
+     * Kullanıcı tercihini senkronun hemen ardından değiştirirse seçimi
+     * telefonda kalırdı. Şimdi kalan süre kadar tekrar kuruluyor.
+     */
+    const attempt = () => {
       const now = Date.now();
-      if (runner.current.running || now - lastRunAt.current < MIN_INTERVAL_MS) {
+      const waited = now - lastRunAt.current;
+      if (runner.current.running || waited < MIN_INTERVAL_MS) {
+        const retryIn = runner.current.running
+          ? 2000
+          : MIN_INTERVAL_MS - waited;
+        timer.current = setTimeout(attempt, retryIn);
         return;
       }
       lastSignature.current = signature;
@@ -186,7 +198,10 @@ export function AutoSync() {
       void runSync(dataRef.current, update, { push: true }).finally(() => {
         runner.current.running = false;
       });
-    }, DEBOUNCE_MS);
+    };
+
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(attempt, DEBOUNCE_MS);
 
     return () => {
       if (timer.current) clearTimeout(timer.current);

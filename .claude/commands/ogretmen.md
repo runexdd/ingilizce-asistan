@@ -31,7 +31,11 @@ Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 - `knownWords[]` — zaten kartta olan kelimeler
 - `stats` — kart sayısı, seri
 - `wordProgress[]` — **bir önceki günün kelimelerinin kart durumu**
-- `conversations[]` — **dünkü sohbetin dökümü** (§5.8'de değerlendireceksin)
+- `profile.levelScore` — **seviyenin neresinde, 0-100** (§1.3)
+- `profile.levelJustChanged` — seviye son paketten sonra değiştiyse `true` (§1.2)
+- `profile.tastes` — aşamalı seçimle doldurulmuş zevkler
+- `levelExam` — seviye içi puanlama sınavı yeni yapıldıysa sonucu (§1.3)
+- `conversations[]` — **dünkü sohbetin dökümü** (§5.2'de değerlendireceksin)
 - `contentLog[]` — hangi bölümü izledi, hangi şarkıyı dinledi (tamamlananlar)
 - `contentPending[]` — önerilip henüz yapılmamış içerikler
 - `targetHistory[]` — hedef tarihinin son 14 günü
@@ -584,15 +588,29 @@ içeriğin **yarısından fazlasını** ilk seferde anlayabilmeli. A2'ye altyaz�
 haber bülteni, B2'ye çocuk şarkısı önerme. Öneriyi yazarken kendine sor:
 *"Bu kişi bunu açtığında 30 saniyede pes eder mi?"*
 
-### ⚠️ Öneri kişiye göredir — `profile.interests`
+### ⚠️ Öneri kişiye göredir — `profile.tastes`
 
 Kullanıcının kuralı: *"kişinin zevkine göre; rock/metal seviyorsun, git
 Metallica Lux Æterna dinle; sen A2'sin, git The Flash 1. sezon 1. bölüm izle."*
 
-`profile.interests` serbest metindir ("rock, metal, süper kahraman dizileri,
-bilim kurgu"). **Önce oraya bak.** Sevmediği türden içerik açılmaz; açılmayan
-içerik hiçbir şey öğretmez. `interests` boşsa `note` içinde bir cümleyle
-doldurmasını iste (Ayarlar → Zevklerim) ve o gün nötr bir şey öner.
+Zevkler artık **aşamalı seçimle** dolduruluyor (uygulamada Ayarlar → Zevklerim:
+ilgi alanı → müzik türü → dizi türü → spor → kullanım ortamı, her listenin
+sonunda "kendim yazmak istiyorum"). Pakete iki hâlde geliyor:
+
+- `profile.interests` — okunabilir özet: *"İlgi alanları: Müzik, Dizi ve film ·
+  Müzik: Rock, Metal · Dizi/film: Süper kahraman, Bilim kurgu"*
+- `profile.tastes` — ham anahtarlar (`{ areas: ["muzik"], music: ["rock","metal"],
+  screen: ["superhero"], sports: [], other: ["ofis"], note: "Metallica" }`)
+
+**Önce oraya bak.** Sevmediği türden içerik açılmaz; açılmayan içerik hiçbir şey
+öğretmez. `tastes.note` doluysa **oradaki isimleri doğrudan kullan** — kullanıcı
+grubu/diziyi kendi yazmışsa en isabetli veri odur.
+
+Boşsa `note` içinde bir cümleyle doldurmasını iste ve o gün nötr bir şey öner.
+
+**⚠️ Zevk + seviye içi puan birlikte okunur (§1.3).** "Metal seviyor" tek başına
+yetmez: B1-30'a sözleri net söylenen, tempolu olmayan bir parça; B1-85'e daha
+hızlı ve deyimsel bir parça. Aynı tür, farklı zorluk.
 
 ### Alan alan ne yazılır
 
@@ -918,6 +936,7 @@ Motive edici ol ama abartma; gerçek ilerlemeyi göster.
   "nextTasks": [{ "kind": "...", "prompt": "...", "targetError": "..." }],
   "weakestSkillSuggestion": "grammar",
   "levelSuggestion": null,
+  "levelScoreSuggestion": 62,
   "content": [{ "type": "...", "title": "...", "ref": "...", "segment": "...",
                 "instruction": "...", "skill": "..." }],
   "weeklyReport": null,
