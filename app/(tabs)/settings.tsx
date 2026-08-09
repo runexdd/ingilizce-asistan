@@ -9,6 +9,11 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  describeSpeakingSize,
+  describeWritingSize,
+  specOf,
+} from '../../src/core/level';
 import { SKILL_LABELS, type QuestionSkill } from '../../src/core/placement';
 import {
   listEnglishVoices,
@@ -191,6 +196,22 @@ export default function SettingsScreen() {
             {profile.placementDone ? profile.level : 'Belirle →'}
           </Text>
         </Pressable>
+
+        {/* Seviyenin somut karşılığı. "A2" tek başına bir şey ifade etmiyor;
+            görevlerin ve metinlerin neye göre ayarlandığı burada görünsün. */}
+        <View style={[styles.row, styles.rowDivider]}>
+          <View style={styles.rowMain}>
+            <Text style={styles.label}>Bu seviyede</Text>
+            <Text style={styles.hint}>
+              Yazma {describeWritingSize(profile.level)} · konuşma{' '}
+              {describeSpeakingSize(profile.level)} · okuma{' '}
+              {specOf(profile.level).passageWords.join('-')} kelime · günde en fazla{' '}
+              {specOf(profile.level).maxNewWordsPerDay} yeni kelime
+              {'\n'}
+              Çalışılan yapılar: {specOf(profile.level).structures}
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.row}>
           <View style={styles.rowMain}>

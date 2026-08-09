@@ -8,7 +8,7 @@
  * Saf TypeScript, ağ ve AI yok.
  */
 
-import type { CEFRLevel } from './placement';
+import { LEVELS, levelIndex, type CEFRLevel } from './level';
 
 export interface ReadingQuestion {
   question: string;
@@ -139,8 +139,7 @@ export function pickPassage(
   level: string,
   excludeIds: string[] = []
 ): ReadingPassage | null {
-  const order: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-  const target = Math.max(0, order.indexOf(level as CEFRLevel));
+  const target = levelIndex(level);
 
   const available = FALLBACK_PASSAGES.filter((p) => !excludeIds.includes(p.id));
   const pool = available.length > 0 ? available : FALLBACK_PASSAGES;
@@ -149,8 +148,8 @@ export function pickPassage(
   return (
     [...pool].sort(
       (a, b) =>
-        Math.abs(order.indexOf(a.level) - target) -
-        Math.abs(order.indexOf(b.level) - target)
+        Math.abs(LEVELS.indexOf(a.level) - target) -
+        Math.abs(LEVELS.indexOf(b.level) - target)
     )[0] ?? null
   );
 }

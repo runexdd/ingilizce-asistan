@@ -33,6 +33,37 @@ Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 
 `pendingTasks` boşsa düzeltme üretme; sadece sıradaki görevleri ve içeriği üret.
 
+## 1.5 Seviye — her şeyin ölçüsü ⚠️ **önce burayı oku**
+
+Bu paketteki **her şey** `profile.level`'a göre ayarlanır: görevin boyu,
+metnin uzunluğu, örnek cümlenin yapısı, günde verilecek kelime sayısı.
+Aşağıdaki tablo tek referans; başka bölümlerde sayı tekrar edilmez, buraya
+bakılır.
+
+| Seviye | Yazma görevi | Konuşma | Okuma parçası | Örnek cümle | Günde yeni kelime | Çalışılan yapılar |
+|---|---|---|---|---|---|---|
+| **A1** | 2-3 cümle | 30 sn | 60-100 kelime | en fazla 8 kelime | 4 | present simple, tek yapılı kısa cümle |
+| **A2** | 3-4 cümle | 45 sn | 120-180 kelime | en fazla 10 kelime | 5 | past simple, going to, karşılaştırma, temel edatlar |
+| **B1** | 5-6 cümle | 60 sn | 200-280 kelime | en fazla 14 kelime | 6 | present perfect, 1. tip koşul, edilgen çatı, bağlaçlar |
+| **B2** | 7-9 cümle | 90 sn | 300-400 kelime | en fazla 18 kelime | 8 | karma zamanlar, ilgi cümlecikleri, soyut bağlam, deyimsel kullanım |
+| **C1** | 10-12 cümle | 120 sn | 400-550 kelime | en fazla 25 kelime | 10 | esnek üslup, nüans, üstü kapalı anlatım |
+| **C2** | 10-14 cümle | 150 sn | 400-600 kelime | en fazla 25 kelime | 10 | ana dili düzeyinde esneklik |
+
+> Bu tablo `src/core/level.ts` içindeki `LEVEL_SPEC` ile **birebir aynıdır.**
+> Uygulama aynı sayıları kullanıp ekranda gösteriyor ("A2 · 3-4 cümle").
+> Birini değiştirirsen diğerini de değiştir, yoksa kullanıcı ekranda bir şey
+> görüp senden başka bir şey alır.
+
+**Sadece bir sınır değil, bir hedef.** Seviye çıtayı hem aşağıdan hem yukarıdan
+tutar: A2'ye 20 kelimelik cümle vermek yıldırır, B2'ye 4 kelimelik cümle
+vermek hiçbir şey öğretmez. Cümlenin **yapısı** da tabloya uymalı — A2 satırında
+"past simple" yazıyorsa örnek ve görev o zamanı çalıştırsın.
+
+**Bir tık zorlaştırma kuralı:** Görevlerde ve okuma parçasında ara sıra bir üst
+seviyeden yapı geçebilir; kullanıcı hep aynı yerde kalmasın. Ama bu bir
+**tık** olsun — A2'ye B2 metni verme. Örnek cümlelerde bunu yapma; örnekler
+her zaman tam seviyesinde olmalı, çünkü onlar öğretim aracı.
+
 ## 2. Her yazıyı düzelt
 
 Her `pendingTasks` öğesi için:
@@ -59,6 +90,12 @@ Kategoriler:
 Örnek: *"'since' ile present perfect kullanılır: I have lived here since 2019."*
 
 **`newWords[]`** — `{ word, meaning (Türkçe), example }`
+
+> `example` alanı **1.5'teki seviye tablosuna** uyar ve kullanıcının o
+> sıradaki zayıf yapısını doğru biçimde modeller. Bu cümle kart ekranında
+> tekrar tekrar karşısına çıkacak; sözlükten kopyalanmış rastgele bir cümle
+> değil, ona yazılmış bir cümle olsun. Ayrıntı: 3.5'teki "Örnekler kişiye özel
+> yazılır" bölümü — kural kartlarda da aynı.
 
 > ⛔ **EN ÖNEMLİ KURAL: Kullanıcının metninde geçen kelimeyi kart yapma.**
 > Yazdıysa biliyor. Yazımı yanlışsa bu bir `spelling` hatasıdır, kart değil.
@@ -129,9 +166,12 @@ verme.** Cambridge English Vocabulary Profile seviye etiketlerini esas al.
 - **Bölüm bölüm ilerlesin.** `chapter` numarası ver, önceki bölümde kaldığın
   yerden devam et. Merak, geri getiren en güçlü şeydir.
   Önceki bölümü hatırlamak için `outbox` içindeki geçmişe bak.
-- **Uzunluk:** A2 için 120-180 kelime, B1 için 200-280, B2 için 300-400.
-  Kullanıcı "5-10 sayfa" istedi ama bir oturuşta okunmayan metin okunmaz —
-  kısa bölümler hâlinde ilerlemek daha etkili.
+- **Uzunluk:** 1.5'teki tablodan oku. Kullanıcı "5-10 sayfa" istedi ama bir
+  oturuşta okunmayan metin okunmaz — kısa bölümler hâlinde ilerlemek daha
+  etkili.
+- **Dil seviyesi:** Metnin yapıları da tablodaki satıra uysun. Bilinmeyen
+  kelime oranı %5'i geçmesin (20 kelimede en fazla 1 yeni kelime); üstüne
+  çıkınca okuma sökülmez, kullanıcı bırakır.
 - **Hedef kelimeler metinde GEÇSİN.** Zorlama olmasın, doğal aksın.
 - 2-3 anlama sorusu ekle.
 
@@ -193,12 +233,18 @@ Her örneği yazmadan önce `outbox` içindeki şu üç şeye bak:
 
 **1. `profile.level` — cümlenin yapısı**
 
-| Seviye | Cümle nasıl olmalı | "saw" için örnek |
-|---|---|---|
-| **A1** | 4-8 kelime, tek yapı, present/past simple | *I saw a bird today.* |
-| **A2** | 6-10 kelime, past simple, zaman zarfı | *I saw my manager at the bus stop yesterday.* |
-| **B1** | 8-14 kelime, bağlaçlı, zaman uyumlu | *I saw him leaving the office just as the meeting started.* |
-| **B2** | 12-18 kelime, soyut bağlam, deyimsel | *Looking back, I saw that the delay had been unavoidable.* |
+Uzunluk sınırı ve çalışılacak yapılar **1.5'teki tabloda.** Aynı kelimenin
+seviyelere göre nasıl değiştiği:
+
+| Seviye | "saw" için örnek |
+|---|---|
+| **A1** | *I saw a bird today.* |
+| **A2** | *I saw my manager at the bus stop yesterday.* |
+| **B1** | *I saw him leaving the office just as the meeting started.* |
+| **B2** | *Looking back, I saw that the delay had been unavoidable.* |
+
+Uygulama örnekleri bu sınıra göre süzüyor: seviyenin üstünde kalan cümle
+kullanıcıya hiç gösterilmiyor. Sınırı aşarsan emeğin çöpe gider.
 
 Örnekteki **diğer** kelimeler de seviyenin altında ya da seviyesinde olsun.
 Hedef kelimeyi öğretirken cümleye üç yeni bilinmeyen kelime koymak, öğretmeyi
@@ -290,7 +336,9 @@ Her görev `{ kind, prompt, targetError }`. `prompt` İngilizce yazılır.
 4. Dinleme/dış içerik `nextTasks`'a değil, `content`'e yazılır.
 
 **Görev boyutu sabit değil.** Şuna göre ayarla:
-- **Seviye**: A2 → 3-4 cümle · B1 → 5-6 cümle · B2 → paragraf
+- **Seviye**: 1.5'teki tablodan oku (yazma cümle sayısı, konuşma süresi).
+  Uygulama aynı sayıyı görev ekranında gösteriyor — "A2 · 3-4 cümle" yazıyor.
+  Sen daha uzun bir şey istersen kullanıcı çelişki görür.
 - **Dün nasıl geçti**: zorlandıysa kısalt, rahat geçtiyse bir tık uzat
 - **Gün tipi**: iş günü kısa, hafta sonu uzun (`weekdayMinutes` / `weekendMinutes`)
 
@@ -317,7 +365,12 @@ Konuşma görevlerinde prompt'a ekle:
 
 ## 5. İçerik öner (`content`)
 
-2-4 öneri. **Genel hayat İngilizcesi** — mesleğe daraltma. Seviyeye uygun olsun.
+2-4 öneri. **Genel hayat İngilizcesi** — mesleğe daraltma.
+
+**Seviyeye uygunluk burada da geçerli** (bkz. 1.5). Somut ölçüt: kullanıcı
+içeriğin **yarısından fazlasını** ilk seferde anlayabilmeli. A2'ye altyazısız
+haber bülteni, B2'ye çocuk şarkısı önerme. Öneriyi yazarken kendine sor:
+*"Bu kişi bunu açtığında 30 saniyede pes eder mi?"*
 
 `{ type, title, ref, segment, instruction, skill }`
 
@@ -370,10 +423,11 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
   - **Tek seferde %25'ten fazla oynatma.** Uygulama zaten sınırlıyor ama sen de
     dikkat et: bir haftada "60 gün" → "20 gün" demek güven kaybettirir.
 
-- **`dailyNewWords`** — Kelime tutma oranına bak (`measurements.retention`):
-  - %85 üstü → sayıyı artır (5 → 6 → 7)
+- **`dailyNewWords`** — Tavan 1.5'teki tabloda ("günde yeni kelime"); o sayının
+  üstüne çıkma. Tavanın altında nerede duracağını tutma oranı belirler
+  (`measurements.retention`):
+  - %85 üstü → sayıyı bir artır, tavanı aşmadan
   - %60 altı → azalt, önce eskiler otursun
-  - Başlangıç 5. Asla 10'u geçme.
 
 - **`dailyMinutes`** — Gerçekçi ol. `measurements.weeklyMinutes` ne diyorsa
   ondan çok uzaklaşma; %30'dan fazla artırma. Tutulamayan hedef, hedef değildir.

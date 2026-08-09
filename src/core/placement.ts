@@ -9,7 +9,20 @@
  * ayrı raporluyoruz.
  */
 
-export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+/**
+ * Seviye merdiveni ve açıklamaları `level.ts` içinde yaşıyor — seviyeye bağlı
+ * her şeyin (görev boyu, metin uzunluğu, örnek cümle sınırı) tek yerden
+ * okunması için. Buradan yeniden dışa aktarılıyorlar ki bu dosyayı kullanan
+ * ekranlar değişmek zorunda kalmasın.
+ */
+export {
+  LEVELS,
+  LEVEL_DESCRIPTIONS,
+  LEVEL_SELF_HINTS,
+  type CEFRLevel,
+} from './level';
+import { LEVELS, LEVEL_DESCRIPTIONS, type CEFRLevel } from './level';
+
 export type QuestionSkill = 'grammar' | 'vocabulary' | 'reading';
 
 /** Soru biçimi. `choice` tanımayı, diğerleri üretmeyi ölçer. */
@@ -58,7 +71,6 @@ export type PlacementQuestion =
   | OrderQuestion
   | SpotQuestion;
 
-export const LEVELS: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 export const TEST_LENGTH = 25;
 const START_INDEX = 2; // B1'den başla
 
@@ -66,25 +78,6 @@ export const SKILL_LABELS: Record<QuestionSkill, string> = {
   grammar: 'Gramer',
   vocabulary: 'Kelime',
   reading: 'Okuma',
-};
-
-export const LEVEL_DESCRIPTIONS: Record<CEFRLevel, string> = {
-  A1: 'Başlangıç — temel kalıplar ve günlük kelimeler',
-  A2: 'Temel — tanıdık konularda basit iletişim',
-  B1: 'Orta — günlük durumlarda kendini ifade edebiliyorsun',
-  B2: 'Orta-üstü — akıcı konuşuyor, karmaşık metinleri anlıyorsun',
-  C1: 'İleri — esnek ve etkili dil kullanımı',
-  C2: 'Ustalık — neredeyse ana dili düzeyinde',
-};
-
-/** Kendi seviyesini seçmek isteyenler için açıklamalar */
-export const LEVEL_SELF_HINTS: Record<CEFRLevel, string> = {
-  A1: 'Yeni başlıyorum, temel cümleler kurabiliyorum',
-  A2: 'Basit sohbetleri anlıyorum, kendimi zorlanarak anlatıyorum',
-  B1: 'Günlük konularda konuşabiliyorum, hata yapıyorum',
-  B2: 'Rahat konuşuyorum, film/dizi çoğunlukla anlaşılıyor',
-  C1: 'Karmaşık konularda tartışabiliyorum',
-  C2: 'Neredeyse ana dilim gibi',
 };
 
 /* ------------------------------------------------------------------ havuz */

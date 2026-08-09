@@ -8,6 +8,7 @@
  */
 
 import { IRREGULAR_FORMS } from './irregular';
+import { specOf } from './level';
 
 /** Sözlükten dönen tek bir Türkçe karşılık adayı */
 export interface Candidate {
@@ -160,22 +161,14 @@ export function dedupe(cands: Candidate[]): Candidate[] {
 }
 
 /**
- * Seviyeye göre en fazla kaç kelimelik örnek gösterilir.
+ * Örnek cümleleri seviyeye göre süzer.
  *
  * Sözlüklerin hazır örnekleri çoğu zaman edebî ve uzun oluyor; A2 seviyesinde
- * birine 25 kelimelik cümle göstermek öğretmez, yıldırır. Öğretmenin kendi
- * yazdığı örnekler zaten seviyeye göre üretiliyor (bkz. `ogretmen.md`); bu
- * süzgeç sadece internetten gelen yedekler için.
+ * birine 25 kelimelik cümle göstermek öğretmez, yıldırır. Sınır `level.ts`
+ * içindeki tek tablodan okunuyor — öğretmenin kullandığı sayılarla aynı.
+ * Öğretmenin kendi yazdığı örnekler zaten seviyeye göre üretildiği için bu
+ * süzgeç sadece internetten gelen yedekler için çalışır.
  */
-export const MAX_EXAMPLE_WORDS: Record<string, number> = {
-  A1: 8,
-  A2: 10,
-  B1: 14,
-  B2: 18,
-  C1: 25,
-  C2: 25,
-};
-
 export function filterExamples(
   examples: string[] | undefined,
   word: string,
@@ -183,7 +176,7 @@ export function filterExamples(
   level: string | undefined
 ): string[] | undefined {
   if (!examples?.length) return undefined;
-  const limit = MAX_EXAMPLE_WORDS[(level ?? 'B1').toUpperCase()] ?? 14;
+  const limit = specOf(level).maxExampleWords;
   const stems = [word, lemma]
     .filter((w): w is string => !!w)
     .map((w) => w.slice(0, 4).toLowerCase());

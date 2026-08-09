@@ -10,6 +10,11 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import {
+  describeSpeakingSize,
+  describeWritingSize,
+  specOf,
+} from '../../src/core/level';
 import { pickPassage, type ReadingPassage } from '../../src/core/reading';
 import { speakEnglish, stopSpeaking } from '../../src/core/speech';
 import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
@@ -57,11 +62,20 @@ function WritingTask({ long }: { long: boolean }) {
     long ? t.kind === 'writing-long' : t.kind === 'writing-micro'
   );
 
+  /**
+   * Öğretmen görev göndermemişse yedek görev **seviyeye göre** kurulur.
+   * Sabit "3-4 cümle yaz" demek A1'de yıldırır, B2'de hiçbir şey öğretmez.
+   */
+  const level = data.profile.level;
+  const spec = specOf(level);
+  const [minSentences, maxSentences] = spec.writingSentences;
+  const fallbackSentences = long ? maxSentences + 2 : minSentences;
+
   const prompt =
     suggested?.prompt ??
     (long
-      ? 'Tell the story of one thing that happened to you this week. Use at least five separate sentences.'
-      : 'Write 3-4 sentences about what you did today.');
+      ? `Tell the story of one thing that happened to you this week. Write at least ${fallbackSentences} sentences.`
+      : `Write ${minSentences}-${maxSentences} sentences about what you did today.`);
 
   const todayWords = useTodayWords();
 
@@ -91,7 +105,12 @@ function WritingTask({ long }: { long: boolean }) {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <PromptBox label="Yazma görevi" text={prompt} focus={suggested?.targetError} />
+        <PromptBox
+          label="Yazma görevi"
+          text={prompt}
+          focus={suggested?.targetError}
+          size={`${level} · ${describeWritingSize(level)} · ${spec.structures}`}
+        />
         <TargetWords words={todayWords} />
 
         <TextInput
@@ -384,10 +403,13 @@ function SpeakingTask() {
   const [submitted, setSubmitted] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
+  const level = data.profile.level;
+  const spec = specOf(level);
+
   const suggested = data.suggestedTasks.find((t) => t.kind === 'speaking');
   const prompt =
     suggested?.prompt ??
-    'Talk for about 60 seconds: What did you do today, and what was the hardest part?';
+    `Talk for about ${spec.speakingSeconds} seconds: What did you do today, and what was the hardest part?`;
 
   const todayWords = useTodayWords();
 
@@ -430,7 +452,12 @@ function SpeakingTask() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <PromptBox label="Konuşma görevi" text={prompt} focus={suggested?.targetError} />
+        <PromptBox
+          label="Konuşma görevi"
+          text={prompt}
+          focus={suggested?.targetError}
+          size={`${level} · ${describeSpeakingSize(level)} · ${spec.structures}`}
+        />
         <TargetWords words={todayWords} />
 
         <Pressable style={styles.speakButtonWide} onPress={speakPrompt}>
@@ -486,15 +513,19 @@ function PromptBox({
   label,
   text,
   focus,
+  size,
 }: {
   label: string;
   text: string;
   focus?: string;
+  /** "A2 · 3-4 cümle · past simple…" — görevin seviyeye göre beklenen boyutu */
+  size?: string;
 }) {
   return (
     <View style={styles.promptBox}>
       <Text style={styles.promptLabel}>{label}</Text>
       <Text style={styles.prompt}>{text}</Text>
+      {size && <Text style={styles.promptSize}>{size}</Text>}
       {focus && <Text style={styles.promptFocus}>Odak: {focus}</Text>}
     </View>
   );
@@ -561,10 +592,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs + 2,
     lineHeight: 23,
   },
+  promptSize: {
+    fontSize: 12,
+    color: colors.accent,
+    marginTop: spacing.sm,
+    opacity: 0.85,
+  },
   promptFocus: {
     fontSize: 13,
     color: colors.accent,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     fontWeight: '600',
   },
 
