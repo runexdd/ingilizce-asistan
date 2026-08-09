@@ -19,9 +19,12 @@ import { router } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { conversationStats } from '../../src/core/conversation';
-import { nextLevel } from '../../src/core/level';
 import { describeLevelScore } from '../../src/core/levelexam';
-import { estimateTarget, targetTrend } from '../../src/core/progress';
+import {
+  estimateTarget,
+  targetLevelFor,
+  targetTrend,
+} from '../../src/core/progress';
 import { toISODate } from '../../src/core/srs';
 import { markContentDone } from '../../src/db/mutations';
 import {
@@ -53,9 +56,21 @@ export default function TeacherScreen() {
      Önceki kayıt tahmine veriliyor ki %25 sınırı işlesin; öğretmen bir
      haftada "60 gün → 20 gün" diyemesin. */
   const history = data.targetHistory ?? [];
+  /**
+   * ⚠️ Kıyas noktası **bugünün kendi kaydı olmamalı.**
+   *
+   * `history.at(-1)` aşağıdaki efekt bugünün kaydını yazdıktan sonra kendi
+   * kaydına işaret ediyordu; %25 yumuşatma her ekran ziyaretinde kendi
+   * çıktısını girdi alıp altı turda tavana tırmanıyordu (100 → 125 → 156 →
+   * … → 540) ve her turda diske yazıyordu.
+   */
+  const previousDays = useMemo(
+    () => history.filter((p) => p.date !== today).at(-1)?.daysRemaining,
+    [history, today]
+  );
   const estimate = useMemo(
-    () => estimateTarget(data, new Date(), history.at(-1)?.daysRemaining),
-    [data, history]
+    () => estimateTarget(data, new Date(), previousDays),
+    [data, previousDays]
   );
 
   const trend = useMemo(
@@ -124,7 +139,14 @@ export default function TeacherScreen() {
   const watch = activeContent.items.filter((c) => c.type !== 'task');
   const chores = activeContent.items.filter((c) => c.type === 'task');
 
-  const goal = plan?.targetLevel ?? nextLevel(data.profile.level) ?? data.profile.level;
+  /**
+   * Hedef **her zaman mevcut seviyenin bir üstü** (`targetLevelFor`).
+   *
+   * Eskiden `plan.targetLevel` doğrudan okunuyordu; kullanıcı seviyesini elle
+   * değiştirince öğretmenin planı eskimiş oluyor ve ekranda "B1 → B1", hatta
+   * B2'ye çekince "B2 → B1" yazıyordu — hedef geriye gidiyordu.
+   */
+  const goal = targetLevelFor(data);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: spacing.md }}>
@@ -211,8 +233,17 @@ export default function TeacherScreen() {
                 ? `${trend.label} (önceki tahmin ${trend.previousDays} gündü)`
                 : trend.label}
             </Text>
-            {plan?.targetReason ? (
+            {/* Gerekçe öğretmenin SON senkrondaki kararını anlatıyor. Seviye
+                veya zevk o günden sonra değiştiyse artık geçerli değil —
+                "hedef sabit kaldı" yazısı gün sayısı 100'den 540'a fırlarken
+                bile ekranda kalıyordu. */}
+            {plan?.targetReason && !stale ? (
               <Text style={styles.trendReason}>{plan.targetReason}</Text>
+            ) : stale ? (
+              <Text style={styles.trendReason}>
+                Hedefin değişti; öğretmen yeni gerekçeyi bir sonraki paketinde
+                yazacak.
+              </Text>
             ) : null}
             <Text style={styles.note}>{estimate.note}</Text>
           </>
@@ -376,7 +407,9 @@ export default function TeacherScreen() {
             ) : (
               <Pressable
                 style={styles.secondaryButton}
-                onPress={() => update((c) => markContentDone(c, item.title))}
+                onPress={() =>
+                  update((c) => markContentDone(c, item.title, new Date(), item.type))
+                }
               >
                 <Text style={styles.secondaryButtonText}>Bitirdim, işaretle</Text>
               </Pressable>
@@ -397,7 +430,9 @@ export default function TeacherScreen() {
               ) : (
                 <Pressable
                   style={styles.secondaryButton}
-                  onPress={() => update((c) => markContentDone(c, item.title))}
+                  onPress={() =>
+                  update((c) => markContentDone(c, item.title, new Date(), item.type))
+                }
                 >
                   <Text style={styles.secondaryButtonText}>Bitirdim, işaretle</Text>
                 </Pressable>

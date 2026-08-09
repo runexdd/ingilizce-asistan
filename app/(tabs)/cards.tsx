@@ -37,7 +37,7 @@ import {
   seedDailyWords,
 } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
-import { getStudyQueue } from '../../src/db/selectors';
+import { getStudyQueue, isLevelStale } from '../../src/db/selectors';
 import type { Card } from '../../src/db/types';
 import { colors, radius, spacing } from '../../src/ui/theme';
 
@@ -60,10 +60,18 @@ import { colors, radius, spacing } from '../../src/ui/theme';
 export default function CardsScreen() {
   const { data, update } = useStore();
 
-  /** Yeni kelime sayısına öğretmen karar verir; yoksa seviye tavanı geçerli */
-  const dailyNewWords =
-    data.plan?.dailyNewWords ??
-    specOf(data.profile.level, data.plan?.sizing).maxNewWordsPerDay;
+  /**
+   * Yeni kelime sayısına öğretmen karar verir — **planı eskimediği sürece.**
+   *
+   * Öğretmenin B1 için verdiği "günde 5", kullanıcı B2'ye geçtiğinde de 5
+   * kalıyordu; seviye tablosu 8 diyor. Hedef satırındaki "eskimiş plan
+   * kazanıyor" hatasının kelime tarafındaki kardeşi. Seviye değiştiyse
+   * öğretmen yeni sayıyı söyleyene kadar seviye tavanı geçerli.
+   */
+  const spec = specOf(data.profile.level, data.plan?.sizing);
+  const dailyNewWords = isLevelStale(data)
+    ? spec.maxNewWordsPerDay
+    : (data.plan?.dailyNewWords ?? spec.maxNewWordsPerDay);
 
   const queue = useMemo(
     () => getStudyQueue(data, dailyNewWords),

@@ -19,7 +19,7 @@ import { addDays, toISODate } from '../core/srs';
 import { describeTastes } from '../core/tastes';
 import {
   getTodayWordProgress,
-  isContentStale,
+  isLevelStale,
   type WordProgress,
 } from '../db/selectors';
 import type {
@@ -365,7 +365,8 @@ export function buildOutbox(data: AppData): OutboxPayload {
       level: data.profile.level,
       levelScore: data.profile.levelScore,
       levelChangedAt: data.profile.levelChangedAt,
-      levelJustChanged: isContentStale(data),
+      // Öğretmene giden bayrak **seviye** içindir; zevk değişimi ayrı alanda
+      levelJustChanged: isLevelStale(data),
       goals: data.profile.goals,
       weakestSkill: data.profile.weakestSkill,
       weekdayMinutes: data.profile.weekdayMinutes,

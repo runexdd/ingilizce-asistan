@@ -201,7 +201,12 @@ const CATALOG: CatalogItem[] = [
     type: 'song',
     title: 'Metallica — Nothing Else Matters',
     where: 'Spotify / YouTube',
-    levels: ['A1', 'A2', 'B1'],
+    /**
+     * B2 ve C1 de dahil: metal seçmiş bir B2 kullanıcısına katalogda uyan
+     * hiçbir parça kalmıyordu ve tarafsız yedeğe düşüyordu. Sözleri sade
+     * olduğu için üst seviyelerde de dinleme malzemesi olarak çalışır.
+     */
+    levels: ['A1', 'A2', 'B1', 'B2', 'C1'],
     tastes: ['metal', 'rock'],
     why: 'Metal dinliyorsun ama bu parça yavaş ve sözler net söyleniyor — bağırarak söylenen bir şarkı dinleme pratiği olmaz.',
     instruction: 'Önce sözlere bakmadan dinle, sonra sözleriyle bir kez daha. Anladığın 5 kelimeyi not al.',
@@ -325,7 +330,58 @@ const CATALOG: CatalogItem[] = [
     ],
     noun: 'video',
   },
-  /* --------------------------------------------- zevk seçilmemişse yedek */
+  /* --------------------------------------------- zevk seçilmemişse yedek
+   *
+   * ⚠️ **Tarafsız şarkı şart.** Önce katalogda `tastes: []` olan hiç şarkı
+   * yoktu; zevkini doldurmamış birine `pickBest` zorunlu olarak zevk iddia
+   * eden bir parça seçiyordu ve gerekçesinde *"Caz seçtin"*, *"Rap
+   * dinliyorsun"* yazıyordu. Kullanıcı öyle bir şey seçmemişti — yani öneri
+   * yalan söylüyordu. Her tür için bir tarafsız yedek olmalı.
+   */
+  {
+    id: 'neutral-song-easy',
+    type: 'song',
+    title: 'Ed Sheeran — Photograph',
+    where: 'Spotify / YouTube',
+    levels: ['A1', 'A2', 'B1'],
+    tastes: [],
+    why: 'Zevklerine tam uyan bir parça bulamadım. Bu şarkı yavaş ve sözleri net; güvenli bir başlangıç.',
+    instruction:
+      'Önce sözlere bakmadan dinle, sonra sözleriyle bir kez daha. Anladığın 5 kelimeyi not al.',
+    words: [
+      { word: 'to keep', meaning: 'saklamak, tutmak' },
+      { word: 'memory', meaning: 'hatıra, anı' },
+      { word: 'to hurt', meaning: 'acıtmak, incitmek' },
+      { word: 'to hold on', meaning: 'tutunmak, bırakmamak' },
+    ],
+    watchFor: [
+      'Tekrar eden dizeyi yakala ve ezberle.',
+      '"we keep" ile "we kept" farkını duyabiliyor musun?',
+    ],
+    noun: 'song',
+  },
+  {
+    id: 'neutral-song-mid',
+    type: 'song',
+    title: 'The Beatles — Let It Be',
+    where: 'Spotify / YouTube',
+    levels: ['B2', 'C1', 'C2'],
+    tastes: [],
+    why: 'Zevklerine tam uyan bir parça bulamadım. Sözleri sade ama deyimsel; seviyene uygun bir dinleme.',
+    instruction:
+      'Sözlere bakmadan dinle, ne kadarını yakaladığını not et; sonra sözleriyle karşılaştır.',
+    words: [
+      { word: 'to let it be', meaning: 'olduğu gibi bırakmak' },
+      { word: 'wisdom', meaning: 'bilgelik' },
+      { word: 'trouble', meaning: 'sıkıntı, dert' },
+      { word: 'to part', meaning: 'ayrılmak' },
+    ],
+    watchFor: [
+      '"let it be" kalıbı ne anlama geliyor — kelime kelime değil, gerçekte?',
+      'Şarkıda kaç tane emir kipi var?',
+    ],
+    noun: 'song',
+  },
   {
     id: 'easy-english',
     type: 'podcast',
@@ -392,15 +448,30 @@ function pickBest(
   if (pool.length === 0) return null;
 
   const best = Math.max(...pool.map((i) => tasteScore(i, keys)));
-  const winners =
-    best > 0
-      ? pool.filter((i) => tasteScore(i, keys) === best)
-      : // Zevke değen yok: yalan gerekçe vermektense tarafsız içerik ver
-        (pool.filter((i) => i.tastes.length === 0).length > 0
-          ? pool.filter((i) => i.tastes.length === 0)
-          : pool);
+  if (best > 0) {
+    const winners = pool.filter((i) => tasteScore(i, keys) === best);
+    return winners[seed % winners.length];
+  }
 
-  return winners[seed % winners.length];
+  /**
+   * Zevke değen yok. Tarafsız içeriğe düş — gerekçesi bir zevk iddia etmiyor.
+   *
+   * ⚠️ Tarafsız içerik **hiç yoksa** eskiden bütün havuza düşülüyordu ve
+   * kullanıcıya *"Rap dinliyorsun"* diye seçmediği bir zevk atfediliyordu.
+   * Artık katalogda her tür için tarafsız bir yedek var; yine de bulunamazsa
+   * seviye süzgecini gevşetip **bütün katalogdaki** tarafsızları arıyoruz —
+   * yanlış seviye, yalan gerekçeden iyidir.
+   */
+  const neutral = pool.filter((i) => i.tastes.length === 0);
+  if (neutral.length > 0) return neutral[seed % neutral.length];
+
+  const sameType = new Set(pool.map((i) => i.type));
+  const anyNeutral = CATALOG.filter(
+    (i) => i.tastes.length === 0 && sameType.has(i.type)
+  );
+  if (anyNeutral.length > 0) return anyNeutral[seed % anyNeutral.length];
+
+  return pool[seed % pool.length];
 }
 
 /**
@@ -501,12 +572,18 @@ export function buildLocalConversation(
    * podcast'se cümle saçmalıyor; testte tam olarak bu çıktı.
    */
   const thing = isSong ? 'song' : isSeries ? 'episode' : 'video';
+  /**
+   * ⚠️ Türkçe ipucu da türe uymalı. İngilizce tarafı "the video" derken
+   * Türkçesi "Bölümün neyi anlattığını anlat" diyordu — podcast'in bölümü
+   * yok. İki dil ayrı ayrı düzeltilmezse biri doğru, öteki saçma kalıyor.
+   */
+  const seyTR = isSong ? 'Şarkının' : isSeries ? 'Bölümün' : 'İzlediğinin';
   const topic = content?.title ?? 'Günlük sohbet';
 
   const turns: ConversationPlan['turns'] = [
     {
       say: `Hi! Let's talk about the ${thing} you picked: ${topic}. First, tell me what it is about.`,
-      hint: `${isSong ? 'Şarkının' : 'Bölümün'} neyi anlattığını 3-4 cümleyle anlat. Geçmiş zaman kullan.`,
+      hint: `${seyTR} neyi anlattığını 3-4 cümleyle anlat. Geçmiş zaman kullan.`,
       useWords: words.slice(0, 1),
       minWords: base + 6,
       followUp: 'That was short. Give me two more sentences — what happened next?',
@@ -519,7 +596,7 @@ export function buildLocalConversation(
     },
     {
       say: `Was there anything you did not understand? Tell me about it.`,
-      hint: 'Anlamadığın bir kelime veya cümleyi anlat — bilmediğini anlatmak da bir beceri.',
+      hint: `${seyTR} anlamadığın bir kelimesini veya cümlesini anlat — bilmediğini anlatmak da bir beceri.`,
       minWords: base,
       followUp: 'Try again: was it a word, or was it too fast?',
     },

@@ -11,6 +11,7 @@
  * Saf TypeScript: ağ, veritabanı, AI çağrısı yok.
  */
 
+import { levelIndex, nextLevel, toLevel } from './level';
 import { addDays, toISODate } from './srs';
 import type { AppData, TargetPoint, TeacherScore } from '../db/types';
 
@@ -178,17 +179,42 @@ export interface TargetEstimate {
   note: string;
 }
 
-/** Son N haftadaki GERÇEK haftalık çalışma dakikası. */
+/**
+ * Son N haftadaki GERÇEK haftalık çalışma dakikası.
+ *
+ * ⚠️ **Bölen, kullanıcının gerçekten var olduğu hafta sayısıdır.**
+ *
+ * Eskiden toplam dakika her zaman 4'e bölünüyordu. Uygulamayı **3 gündür**
+ * kullanan biri için bu, temposunu 10'a bölmek demekti: 27 dakika çalışmış
+ * biri "haftada 7 dakika" görünüyor, oradan da hedefe "2378 gün" çıkıyordu.
+ * Kullanıcı bunu bildirdi ve haklıydı — sayı saçmaydı.
+ *
+ * Doğrusu: ilk kayıttan bugüne kaç hafta geçtiyse ona böl, en fazla `weeks`
+ * kadar geriye bak. Yeni başlayan biri için bölen 1 olur ve tempo gerçeği
+ * gösterir.
+ */
 export function actualWeeklyMinutes(
   data: AppData,
   today: Date = new Date(),
   weeks = 4
 ): number {
   const start = toISODate(addDays(today, -(weeks * 7 - 1)));
-  const minutes = data.sessions
-    .filter((s) => s.date >= start)
-    .reduce((sum, s) => sum + s.minutesSpent, 0);
-  return minutes / weeks;
+  const window = data.sessions.filter((s) => s.date >= start);
+  if (window.length === 0) return 0;
+
+  const minutes = window.reduce((sum, s) => sum + s.minutesSpent, 0);
+
+  const first = window.map((s) => s.date).sort()[0];
+  const daysSpanned =
+    Math.round(
+      (new Date(toISODate(today) + 'T00:00:00').getTime() -
+        new Date(first + 'T00:00:00').getTime()) /
+        86400000
+    ) + 1;
+
+  // En az 1 hafta, en fazla bakılan pencere kadar
+  const effectiveWeeks = Math.min(weeks, Math.max(1, daysSpanned / 7));
+  return minutes / effectiveWeeks;
 }
 
 /**
@@ -209,15 +235,42 @@ export function estimateTarget(
   if (!plan || plan.remainingHours <= 0) return null;
 
   const weeklyMinutes = actualWeeklyMinutes(data, today);
+  const plannedWeekly = Math.max(0, plan.dailyMinutes) * 7;
 
-  // Hiç veri yoksa öğretmenin önerdiği tempoyu varsay
-  const effectiveWeekly =
-    weeklyMinutes > 0 ? weeklyMinutes : plan.dailyMinutes * 7;
+  /**
+   * Veri azken ölçülen tempoya tek başına güvenilmez.
+   *
+   * Üç günlük bir örnekten "haftada 7 dakika" çıkarıp bunu bir yıla yaymak,
+   * kullanıcıya anlamsız bir sayı göstermek olur. Bu yüzden aktif gün sayısı
+   * 14'ün altındayken ölçülen tempo, öğretmenin **önerdiği** tempoyla
+   * harmanlanıyor; veri biriktikçe ölçümün ağırlığı artıyor.
+   */
+  const activeDays = new Set(
+    data.sessions.filter((s) => s.date >= toISODate(addDays(today, -28))).map((s) => s.date)
+  ).size;
 
-  if (effectiveWeekly <= 0) return null;
+  const trust = Math.min(1, activeDays / 14);
+  const blended =
+    weeklyMinutes > 0 && plannedWeekly > 0
+      ? weeklyMinutes * trust + plannedWeekly * (1 - trust)
+      : weeklyMinutes > 0
+        ? weeklyMinutes
+        : plannedWeekly;
 
-  const weeksNeeded = (plan.remainingHours * 60) / effectiveWeekly;
-  let daysRemaining = Math.ceil(weeksNeeded * 7);
+  if (blended <= 0) return null;
+
+  const weeksNeeded = (plan.remainingHours * 60) / blended;
+  /**
+   * **Üst sınır 18 ay.** Bir seviye atlamak için gereken süre araştırmalara
+   * göre en kötü ihtimalle bu mertebede; "2378 gün" (6.5 yıl) bir tahmin
+   * değil, bir hesap hatasının ekrana sızmasıdır. Sınıra dayanıyorsa sorun
+   * tempoda ya da öğretmenin verdiği saatte demektir — sayı yine de
+   * inandırıcı kalsın.
+   */
+  const rawDays = Math.ceil(weeksNeeded * 7);
+  let daysRemaining = Math.min(540, Math.max(7, rawDays));
+  /** Tavana dayandıysak sayı gerçeği değil, sınırı gösteriyor — söylenmeli */
+  const capped = rawDays > 540;
 
   // Ani sıçramaları yumuşat — abartılı tahmin yapma
   if (previousDaysRemaining !== undefined && previousDaysRemaining > 0) {
@@ -230,28 +283,56 @@ export function estimateTarget(
     }
   }
 
-  const activeDays = new Set(
-    data.sessions.filter((s) => s.date >= toISODate(addDays(today, -28))).map((s) => s.date)
-  ).size;
-
   const confidence: TargetEstimate['confidence'] =
     activeDays >= 14 ? 'high' : activeDays >= 5 ? 'medium' : 'low';
 
-  const note =
-    confidence === 'low'
+  /**
+   * Tavana dayandıysak sayıyı süslemek yerine **gerçeği söyle ve yol göster.**
+   *
+   * "540 gün" tek başına umut kırıcı ve yanıltıcı; asıl bilgi şu: bu tempoyla
+   * hedef uzak, şu tempoyla altı ayda ulaşılır. Sahte bir küçük sayı yazmak
+   * kullanıcıyı kandırmak olurdu — o zaten *"mantıklı şekilde yapması lazım"*
+   * dedi, "iyimser görünsün" demedi.
+   */
+  const neededWeekly = Math.ceil((plan.remainingHours * 60) / 26); // 26 hafta ≈ 6 ay
+  const note = capped
+    ? `Bu tempoyla hedef çok uzak. Altı ayda ulaşmak için haftada ~${neededWeekly} dakika gerekiyor; şu an ${Math.round(blended)} dakika.`
+    : confidence === 'low'
       ? 'Henüz az veri var — bu tahmin birkaç hafta içinde netleşecek.'
       : weeklyMinutes === 0
         ? 'Son haftalarda çalışma kaydı yok; tahmin öğretmenin önerdiği tempoya göre.'
         : `Haftada ortalama ${Math.round(weeklyMinutes)} dakika çalışıyorsun.`;
 
   return {
-    level: plan.targetLevel,
+    level: targetLevelFor(data),
     date: toISODate(addDays(today, daysRemaining)),
     daysRemaining,
     weeklyMinutes: Math.round(weeklyMinutes),
     confidence,
     note,
   };
+}
+
+/**
+ * Hedef seviye — **her zaman mevcut seviyenin bir üstü.**
+ *
+ * Kullanıcının kuralı: *"A2'ye hedef B1, A1'se A2, B1'se B2, B2'yse C1,
+ * C1'se C2 — her çektiğimde dinamik olması lazım."*
+ *
+ * ⚠️ Eskiden doğrudan `plan.targetLevel` okunuyordu ve kullanıcı seviyesini
+ * elle değiştirdiğinde öğretmenin planı eskimiş oluyordu: A2'den B1'e geçince
+ * ekranda **"B1 → B1"**, B2'ye geçince **"B2 → B1"** yazıyordu — yani hedef
+ * geriye gidiyordu. Öğretmenin planı ancak gerçekten **yukarıyı** gösteriyorsa
+ * dikkate alınır; C2'de üst seviye yoktur, hedef C2'nin kendisidir.
+ */
+export function targetLevelFor(data: AppData): string {
+  const current = toLevel(data.profile.level);
+  const above = nextLevel(current);
+  if (!above) return current;
+
+  const planned = data.plan?.targetLevel;
+  if (planned && levelIndex(planned) > levelIndex(current)) return planned;
+  return above;
 }
 
 /* --------------------------------------------------------- hedefin gidişatı */
@@ -287,9 +368,16 @@ export function targetTrend(
   const sorted = [...history].sort((a, b) => (a.date < b.date ? -1 : 1));
   const points = sorted.slice(-30);
 
-  // Bugünkü kaydı atla; kıyas önceki günlerden yapılır
-  const earlier = sorted.filter((p) => p.daysRemaining !== currentDays);
-  const previous = earlier.at(-1);
+  /**
+   * Kıyas **önceki günlerden** yapılır.
+   *
+   * ⚠️ Eskiden bugünkü kayıt *değere* göre atılıyordu (`daysRemaining !==
+   * currentDays`). İki sonucu vardı: geçmişte aynı gün sayısına sahip günler
+   * de atlanıp kıyas beklenenden çok daha eskiye gidiyordu, ve `delta === 0`
+   * imkânsız olduğu için "Dünle aynı" dalı ölü koda dönüşmüştü.
+   */
+  const todayISO = toISODate(new Date());
+  const previous = sorted.filter((p) => p.date !== todayISO).at(-1);
 
   if (!previous) {
     return {

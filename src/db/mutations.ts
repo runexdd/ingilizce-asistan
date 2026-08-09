@@ -1,9 +1,10 @@
 import { nextStage, type AnswerVerdict } from '../core/cardcheck';
+import { LEVELS, levelIndex, nextLevel, specOf, toLevel } from '../core/level';
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
-import { isTooHardFor, wordsForLevel } from '../core/wordbank';
+import { fitsLevel, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
-import { countIntroducedToday, isContentStale } from './selectors';
+import { countIntroducedToday, isLevelStale } from './selectors';
 import type {
   AppData,
   ConversationMessage,
@@ -15,6 +16,7 @@ import type {
   SyncState,
   TargetPoint,
   TaskRecord,
+  TeacherPlan,
   TeacherQuestion,
 } from './types';
 
@@ -207,7 +209,12 @@ export function seedDailyWords(
    * yolu tıkamamalıdır. Kullanıcının şikâyeti: *"seviyeyi elle B1 yapıyorum,
    * dinamik olarak yeni kelime gelmiyor, hâlâ eski kelime geliyor."*
    */
-  const stale = isContentStale(data);
+  /**
+   * ⚠️ **`isLevelStale`, `isContentStale` değil.** Bu bayrak aşağıda o güne
+   * ait tohumlanmış kartları **siliyor**. Zevk değişimini buraya bağlamak,
+   * kullanıcı hobisine dokunduğu anda günün kelimelerini sildirirdi.
+   */
+  const stale = isLevelStale(data);
 
   /**
    * ⚠️ Burada eskiden "bugüne ait ders varsa hiç karışma" diye erken çıkış
@@ -249,16 +256,17 @@ export function seedDailyWords(
   const introducedToday = countIntroducedToday(base, today);
 
   /**
-   * Sırada bekleyen kartlar sayılırken **seviyenin çok üstündekiler sayılmaz.**
+   * Sırada bekleyen kartlar sayılırken **seviyeye uymayanlar sayılmaz** —
+   * ne fazla ağır olanlar ne de fazla kolay olanlar.
    *
-   * `getStudyQueue` onları zaten arkaya atıyor; burada da kotayı doldurmuş
-   * saymazsak iki fonksiyon aynı şeyi söylemiş olur. Aksi hâlde kullanıcının
-   * gerçek durumu ortaya çıkıyordu: destede beş tane B2 kalıbı varken kota
-   * dolu görünüyor, yeni kelime eklenmiyor, kuyruk da onları geriye atınca
-   * çalışacak hiçbir şey kalmıyordu.
+   * ⚠️ Önce yalnızca "fazla ağır" eleniyordu ve bu B1'in üstünde hiçbir işe
+   * yaramıyordu: havuzun tavanı B2 olduğu için B2'de `isTooHardFor` hiçbir
+   * şeyi elemiyor, destede biriken eski A1/A2 kartları kotayı dolduruyor ve
+   * `need <= 0` çıkıp **tek bir yeni kelime bile eklenmiyordu.** Kullanıcının
+   * *"B2'ye aldığımda kelime kısmı hâlâ değişmiyor"* şikâyeti buydu.
    */
   const waiting = base.cards.filter(
-    (c) => !c.introducedAt && !isTooHardFor(c.word, base.profile.level)
+    (c) => !c.introducedAt && fitsLevel(c.word, base.profile.level)
   ).length;
 
   const need = dailyNewWords - introducedToday - waiting;
@@ -479,11 +487,29 @@ export function markFeedbackSeen(data: AppData): AppData {
 export function markContentDone(
   data: AppData,
   title: string,
-  today: Date = new Date()
+  today: Date = new Date(),
+  /**
+   * İçeriğin türü. Uygulamanın kendi seçtiği içerik `data.content` içinde
+   * **yok** — o yüzden çağıran taraf türü veriyor.
+   */
+  type = 'series'
 ): AppData {
   const iso = toISODate(today);
+
+  /**
+   * ⚠️ **Düğme ölüydü.** Burada başlık yalnızca `data.content` (öğretmenin
+   * paketi) içinde aranıyordu. Seviye veya zevk değişince ekranda uygulamanın
+   * seçtiği içerik gösteriliyor ve o listede olmadığı için fonksiyon sessizce
+   * `data` döndürüyordu: tik gelmiyor, kayıt tutulmuyor, ertesi gün aynı
+   * içerik yine çıkıyordu.
+   *
+   * Artık kalıcı kayıt (`contentDone`) her hâlükârda yazılıyor; `content`
+   * listesinde varsa oradaki öğe de işaretleniyor. Ekran tiki `contentDone`
+   * üzerinden okuyor.
+   */
+  if ((data.contentDone ?? []).some((d) => d.title === title)) return data;
+
   const item = data.content.find((c) => c.title === title);
-  if (!item || item.done) return data;
 
   return {
     ...data,
@@ -491,8 +517,8 @@ export function markContentDone(
       c.title === title ? { ...c, done: true, doneAt: iso } : c
     ),
     contentDone: [
-      ...(data.contentDone ?? []).filter((d) => d.title !== title),
-      { type: item.type, title: item.title, date: iso },
+      ...(data.contentDone ?? []),
+      { type: item?.type ?? type, title, date: iso },
     ],
   };
 }
@@ -645,6 +671,43 @@ export function markTasksSynced(data: AppData, taskIds: string[]): AppData {
 }
 
 /**
+ * Öğretmenden gelen planı **süzer.**
+ *
+ * Plan olduğu gibi alınıyordu ve tek bir alan bile doğrulanmıyordu. Kullanıcı
+ * ekranda "2378 gün" gördü; sayının kaynağı uygulamanın bölme hatasıydı ama
+ * öğretmenin de yanlış bir `remainingHours` göndermesini engelleyen hiçbir şey
+ * yoktu. Ayrıca `targetLevel` öğretmenin o gün yazdığı değerde donuyordu.
+ *
+ * Üç kural:
+ *  - **Hedef her zaman mevcut seviyenin bir üstü.** Kullanıcının isteği:
+ *    *"A2'ye hedef B1, A1'se A2, B1'se B2, B2'yse C1, C1'se C2."*
+ *  - `remainingHours` 10-400 arası. Bir seviye için 400 saatin üstü, hesap
+ *    hatası dışında bir anlam taşımıyor.
+ *  - `dailyNewWords` seviye tavanını aşamaz; öğretmen 40 yazarsa kullanıcı
+ *    40 kart görürdü.
+ */
+function sanitizePlan(
+  plan: TeacherPlan | undefined,
+  data: AppData
+): TeacherPlan | undefined {
+  if (!plan) return undefined;
+
+  const level = toLevel(data.profile.level);
+  const spec = specOf(level, plan.sizing);
+
+  return {
+    ...plan,
+    targetLevel: nextLevel(level) ?? level,
+    remainingHours: Math.min(400, Math.max(10, plan.remainingHours || 0)),
+    dailyNewWords: Math.min(
+      spec.maxNewWordsPerDay,
+      Math.max(1, plan.dailyNewWords || spec.maxNewWordsPerDay)
+    ),
+    dailyMinutes: Math.min(180, Math.max(5, plan.dailyMinutes || 20)),
+  };
+}
+
+/**
  * Claude Code'dan gelen paketi uygular:
  * düzeltmeleri işler, seviyeyi ve zayıf alanı günceller, görev ve içerik
  * önerilerini kaydeder.
@@ -666,7 +729,20 @@ export function applyInbox(
   }
 
   const profilePatch: Partial<Profile> = {};
-  if (inbox.levelSuggestion) profilePatch.level = inbox.levelSuggestion;
+  /**
+   * Seviye önerisi **süzülerek** alınır.
+   *
+   * Ham metin doğrudan `profile.level`'a yazılıyordu; öğretmen "Z9" yazsa
+   * ekrana "Z9" çıkardı. Ayrıca tek seferde birden fazla basamak atlatmak
+   * (A2'den C1) kimseye yaramaz — seviye kayan bir başlangıç, sıçrama tahtası
+   * değil.
+   */
+  if (inbox.levelSuggestion) {
+    const current = levelIndex(next.profile.level);
+    const wanted = toLevel(inbox.levelSuggestion);
+    const step = Math.max(-1, Math.min(1, LEVELS.indexOf(wanted) - current));
+    profilePatch.level = LEVELS[Math.max(0, Math.min(LEVELS.length - 1, current + step))];
+  }
   if (inbox.weakestSkillSuggestion) {
     profilePatch.weakestSkill = inbox.weakestSkillSuggestion;
   }
@@ -743,7 +819,7 @@ export function applyInbox(
     suggestedTasks: inbox.nextTasks ?? next.suggestedTasks,
     content,
     weeklyReport: inbox.weeklyReport ?? next.weeklyReport,
-    plan: inbox.plan ?? next.plan,
+    plan: sanitizePlan(inbox.plan, next) ?? next.plan,
     lesson: inbox.lesson ?? next.lesson,
     conversationPlan: inbox.conversation ?? next.conversationPlan,
     conversations,

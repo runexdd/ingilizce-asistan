@@ -1,6 +1,6 @@
 import { buildLocalConversation, pickLocalContent } from '../core/localcontent';
 import { addDays, toISODate } from '../core/srs';
-import { isTooHardFor } from '../core/wordbank';
+import { isTooHardFor, levelDistance } from '../core/wordbank';
 import type {
   AppData,
   Card,
@@ -107,8 +107,24 @@ export function getStudyQueue(
    */
   const quota = Math.max(0, dailyNewWords - countIntroducedToday(data, today));
 
+  /**
+   * Kotaya girecek yeni kartlar seçilirken **seviye yakınlığı** de sayılır.
+   *
+   * ⚠️ Eskiden yalnızca "bugünün ders kelimesi mi" bakılıyordu. Kart eklerken
+   * yeni kelimeler dizinin sonuna gittiği için, destede bekleyen eski
+   * (seviyenin çok altındaki) kartlar kotayı önce doldurup yeni seviyenin
+   * kelimelerini dışarıda bırakıyordu — kullanıcı seviyeyi yükseltiyor ama
+   * ekranda hep aynı eski kelimeleri görüyordu.
+   *
+   * Sıra: önce günün ders kelimeleri, sonra seviyeye en yakın olanlar.
+   */
   const fresh = untouched
-    .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
+    .sort(
+      (a, b) =>
+        Number(isTodays(b)) - Number(isTodays(a)) ||
+        levelDistance(a.word, data.profile.level) -
+          levelDistance(b.word, data.profile.level)
+    )
     .slice(0, quota);
 
   // Önceki günlerden gelen, tekrarı bugüne düşmüş kartlar
@@ -212,7 +228,8 @@ export function countIntroducedToday(
 ): number {
   const iso = toISODate(today);
   const changed = data.profile.levelChangedAt;
-  const stale = isContentStale(data);
+  // ⚠️ Kota **seviyeye** bağlı; zevk değişimi günün kelimelerini sıfırlamamalı
+  const stale = isLevelStale(data);
 
   return data.cards.filter((c) => {
     if (c.introducedAt !== iso) return false;
@@ -221,11 +238,42 @@ export function countIntroducedToday(
   }).length;
 }
 
-export function isContentStale(data: AppData): boolean {
-  const changed = data.profile.levelChangedAt;
+function staleSince(data: AppData, changed: string | undefined): boolean {
   if (!changed) return false;
   if (!data.lastInboxAt) return true;
   return changed > data.lastInboxAt;
+}
+
+/**
+ * **Seviye** son paketten sonra mı değişti?
+ *
+ * ⚠️ Bu, kelime/kart tarafının kullandığı ölçüdür ve **yalnızca seviyeye**
+ * bakar. `seedDailyWords` bu bayrağı görünce o güne ait tohumlanmış kartları
+ * siliyor ve günün kotasını sıfırlıyor; `github.ts` bunu `levelJustChanged`
+ * diye öğretmene gönderiyor. Buraya zevk değişimini karıştırmak, kullanıcı
+ * hobisine dokunduğu anda o günün kelime kartlarını sildirirdi — istenen şey
+ * bu değil.
+ */
+export function isLevelStale(data: AppData): boolean {
+  return staleSince(data, data.profile.levelChangedAt);
+}
+
+/**
+ * **İçerik ve sohbet** eskidi mi — seviye *veya* zevk değiştiyse evet.
+ *
+ * Kullanıcının şikâyeti: *"spordayken bana maç anlatmamı istiyor, hobimi
+ * seyahat yaptığımda hâlâ maç anlatmamı istiyor."* Zevk değişince
+ * `levelChangedAt` değişmiyor, paket "taze" sayılıyor ve öğretmenin spor
+ * temalı eski paketi kazanmaya devam ediyordu.
+ *
+ * En son hangisi değiştiyse o geçerli.
+ */
+export function isContentStale(data: AppData): boolean {
+  const changed = [data.profile.levelChangedAt, data.profile.tastes?.updatedAt]
+    .filter((s): s is string => Boolean(s))
+    .sort()
+    .at(-1);
+  return staleSince(data, changed);
 }
 
 /* ------------------------------------------- öğretmen mi, uygulama mı? */
@@ -252,16 +300,41 @@ export function getActiveContent(
   data: AppData,
   today: Date = new Date()
 ): ActiveContent {
+  const iso = toISODate(today);
+  /**
+   * ⚠️ **Bugün bitirilenler havuzdan elenmez.**
+   *
+   * Eleme kuralı "aynı bölümü iki kez verme" içindi ama bugünkü kaydı da
+   * eleyince şu oluyordu: kullanıcı "Bitirdim" der → kayıt düşer → içerik
+   * havuzdan atılır → **öğe ekrandan kaybolur** ve tik hiç görünmez. Emeğin
+   * karşılığını görmeden kaybolan bir düğme, çalışmayan düğmeden farksız.
+   *
+   * Bugünküler listede kalıp tik alıyor; yarın havuzdan eleniyorlar.
+   */
+  const doneTitles = (data.contentDone ?? [])
+    .filter((d) => d.date !== iso)
+    .map((d) => d.title);
   const stale = isContentStale(data);
+
+  /**
+   * Tamamlanma işareti **kalıcı günlükten** okunuyor.
+   *
+   * Uygulamanın seçtiği içerik `data.content` içinde olmadığı için `done`
+   * alanı hiç dolmuyordu; kullanıcı "bitirdim" dese de ertesi gün aynı şey
+   * çıkıyordu. Artık iki kaynak da aynı günlüğe bakıyor.
+   */
+  const withDone = (items: ContentSuggestion[]): ContentSuggestion[] =>
+    items.map((c) => {
+      const record = (data.contentDone ?? []).find((d) => d.title === c.title);
+      return record ? { ...c, done: true, doneAt: record.date } : c;
+    });
+
   if (!stale && data.content.length > 0) {
-    return { items: data.content, source: 'teacher' };
+    return { items: withDone(data.content), source: 'teacher' };
   }
   return {
-    items: pickLocalContent(
-      data.profile.level,
-      data.profile.tastes,
-      toISODate(today),
-      (data.contentDone ?? []).map((d) => d.title)
+    items: withDone(
+      pickLocalContent(data.profile.level, data.profile.tastes, iso, doneTitles)
     ),
     source: 'app',
   };

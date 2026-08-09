@@ -35,16 +35,35 @@
 
 import { spawn } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const API = 'https://api.github.com';
 const DESCRIPTION_PREFIX = 'ingilizce-asistan';
+
+/**
+ * Yollar **betiğin konumuna** sabitlenir, çalışma dizinine değil.
+ *
+ * Nöbetçi Windows Zamanlanmış Görev'inden başlatılıyor ve orada çalışma dizini
+ * her zaman proje kökü olmayabiliyor. `resolve('.outbox.json')` o durumda
+ * bambaşka bir klasörü işaret ediyor; öğretmen dosyayı bulamıyor ve hiçbir şey
+ * çalışmıyor — üstelik sessizce.
+ */
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** Son işlenen paketin damgası burada tutulur — aynı paketi iki kez işleme */
-const STATE_FILE = resolve('.watch-state.json');
+const STATE_FILE = join(ROOT, '.watch-state.json');
 /** Telefondan gelen paket — öğretmen bunu diskten okur, ağa çıkmaz */
-const OUTBOX_FILE = resolve('.outbox.json');
+const OUTBOX_FILE = join(ROOT, '.outbox.json');
 /** Öğretmenin yazdığı cevap — nöbetçi bunu gist'e gönderir */
-const DRAFT_FILE = resolve('.inbox-draft.json');
+const DRAFT_FILE = join(ROOT, '.inbox-draft.json');
+const TOKEN_FILE = join(ROOT, 'sync-token.txt');
+
+/** Yerel takvim günü. `toISOString()` UTC verir; gece yarısından sonra
+ *  Türkiye'de bir gün geride kalıyordu. */
+function localDay(date = new Date()) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
 
 /* ------------------------------------------------------------ ayarlar */
 
@@ -68,6 +87,33 @@ function parseArgs(argv) {
  */
 const MIN_GAP_MS = 5 * 60 * 1000;
 
+/**
+ * Bugünün dersi zaten gönderildiyse, **yalnızca gerçek iş** için tekrar çalış.
+ *
+ * Telefon 20 saniyede bir paket atabiliyor; her pakete tam bir öğretmen turu
+ * açmak hem jeton israfı hem de `ogretmen.md` §7.5'teki "günde tek çalıştır"
+ * bütçesine aykırı. Ders bir kez kurulduktan sonra düzeltilecek yazı, sohbet,
+ * soru veya sınav yoksa öğretmeni rahatsız etmiyoruz.
+ */
+const REFRESH_GAP_MS = 45 * 60 * 1000;
+
+/** Üst üste başarısızlıkta bekleme süresi büyür — sonsuz döngü olmasın */
+const BACKOFF_MS = [0, 10 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000];
+const MAX_FAILS = 4;
+
+/** Öğretmen bu süreyi aşarsa süreç öldürülür — takılan tur nöbeti kilitlemesin */
+const TEACHER_TIMEOUT_MS = 12 * 60 * 1000;
+
+/**
+ * ⛔ **Aynı anda tek tur.**
+ *
+ * `setInterval` turu beklemiyordu; öğretmen dakikalarca sürdüğü için ikinci,
+ * üçüncü tur devreye giriyor, hepsi aynı iki dosyayı yazıp siliyordu — biri
+ * ötekinin taslağını silerken bir başkası `.outbox.json`'u tazeliyordu.
+ * Beş dakikalık bir turda beş paralel `claude` süreci birikebiliyordu.
+ */
+let running = false;
+
 /* ------------------------------------------------------------- yardımcı */
 
 function stamp() {
@@ -79,7 +125,7 @@ function log(message) {
 }
 
 async function getToken() {
-  const raw = await readFile(resolve('sync-token.txt'), 'utf8').catch(() => '');
+  const raw = await readFile(TOKEN_FILE, 'utf8').catch(() => '');
   const token = raw.trim();
   if (!token) {
     console.error(
@@ -187,14 +233,34 @@ function runTeacher() {
       resolvePromise(false);
     });
 
+    /** Takılan tur nöbeti kilitlemesin */
+    const timer = setTimeout(() => {
+      log(`öğretmen ${TEACHER_TIMEOUT_MS / 60000} dakikada bitmedi, durduruluyor.`);
+      try {
+        child.kill();
+      } catch {
+        /* zaten ölmüş */
+      }
+    }, TEACHER_TIMEOUT_MS);
+
     child.on('close', (code) => {
+      clearTimeout(timer);
       const tail = output.trim().split('\n').slice(-12).join('\n');
       if (tail) console.log(tail);
       if (code === 0) {
-        log('öğretmen bitti — paket gist\'e bırakıldı.');
+        log('öğretmen turu bitti.');
         resolvePromise(true);
       } else {
-        log(`öğretmen ${code} koduyla çıktı.`);
+        /**
+         * Windows'ta `claude` bulunamazsa `error` olayı tetiklenmiyor; kabuk
+         * açılıp 1/9009 ile çıkıyor ve buraya düşüyor. Sebebi göremeyen
+         * kullanıcı için açıkça yazıyoruz.
+         */
+        if (code === 9009 || code === 127) {
+          log('HATA: `claude` komutu bulunamadı. Claude Code kurulu mu?');
+        } else {
+          log(`öğretmen ${code} koduyla çıktı.`);
+        }
         resolvePromise(false);
       }
     });
@@ -245,27 +311,54 @@ async function tick(token, options) {
   const pendingConversations = outbox.conversations?.length ?? 0;
   const hasExam = Boolean(outbox.levelExam);
   const levelChanged = Boolean(outbox.profile?.levelJustChanged);
-  const today = new Date().toISOString().slice(0, 10);
-  /** Bugüne ders gelmemişse öğretmenin bugünün paketini kurması gerekiyor */
+  const questions = outbox.questions?.length ?? 0;
+  const today = localDay();
+  /**
+   * Bugüne ders geldi mi.
+   *
+   * ⚠️ Bu bayrak eskiden "nöbetçi bugün bir paket gönderdi mi" demekti ve
+   * telefon her senkron attığında tam bir öğretmen turu tetikliyordu —
+   * `ogretmen.md` §7.5'teki "günde tek çalıştır" bütçesine aykırı. Artık
+   * gerçekten **dersin tarihine** bakılıyor.
+   */
   const needsToday = state.lastLessonDate !== today;
 
   const reasons = [];
   if (pendingTasks) reasons.push(`${pendingTasks} görev`);
   if (pendingConversations) reasons.push(`${pendingConversations} sohbet`);
+  if (questions) reasons.push(`${questions} soru`);
   if (hasExam) reasons.push('seviye sınavı');
   if (levelChanged) reasons.push('seviye değişti');
   if (needsToday) reasons.push('bugünün dersi yok');
 
   if (reasons.length === 0) {
-    await saveState({ ...state, lastOutboxAt: generatedAt });
+    await saveState({ ...state, lastOutboxAt: generatedAt, fails: 0 });
     log('yeni paket var ama işlenecek bir şey yok.');
     return;
   }
 
+  /**
+   * Bugünün dersi zaten kurulduysa ve elde **gerçek iş** yoksa öğretmeni
+   * sık sık rahatsız etme. Ders yenilemek için 45 dakika bekleniyor.
+   */
+  const onlyRefresh = !pendingTasks && !pendingConversations && !questions && !hasExam && !levelChanged;
   const since = Date.now() - (state.lastRunAt ?? 0);
-  if (since < MIN_GAP_MS) {
-    const wait = Math.ceil((MIN_GAP_MS - since) / 1000);
-    log(`iş var (${reasons.join(', ')}) ama son çalıştırmadan ${wait} sn sonra.`);
+  const gap = onlyRefresh ? REFRESH_GAP_MS : MIN_GAP_MS;
+  /** Üst üste başarısızlıkta bekleme büyür */
+  const fails = state.fails ?? 0;
+  const backoff = BACKOFF_MS[Math.min(fails, BACKOFF_MS.length - 1)];
+  const wait = Math.max(gap, backoff) - since;
+
+  if (wait > 0) {
+    log(`iş var (${reasons.join(', ')}) ama ${Math.ceil(wait / 1000)} sn sonra.`);
+    return;
+  }
+
+  if (fails >= MAX_FAILS) {
+    log(
+      `${fails} kez üst üste başarısız oldu, bu paket bırakılıyor. Sorunu çözüp .watch-state.json dosyasını sil.`
+    );
+    await saveState({ ...state, lastOutboxAt: generatedAt, fails: 0 });
     return;
   }
 
@@ -275,62 +368,126 @@ async function tick(token, options) {
     return;
   }
 
-  /* 1) Paketi diske koy — öğretmen ağa çıkmasın, sadece okusun */
-  await writeFile(OUTBOX_FILE, raw, 'utf8');
-  await rm(DRAFT_FILE, { force: true });
-
-  /* 2) Öğretmeni çalıştır */
-  const ran = await runTeacher();
-
-  /* 3) Taslağı al, doğrula, gist'e gönder */
-  let draft = null;
-  try {
-    draft = await readFile(DRAFT_FILE, 'utf8');
-  } catch {
-    log(
-      ran
-        ? 'öğretmen çalıştı ama .inbox-draft.json yazmamış — paket gönderilmedi.'
-        : 'öğretmen tamamlanmadı, taslak yok.'
-    );
-  }
-
   let sent = false;
-  if (draft) {
-    try {
-      JSON.parse(draft);
-    } catch (error) {
-      log(`taslak bozuk JSON, gönderilmedi — ${error.message}`);
-      draft = null;
-    }
-  }
+  let lessonDate = state.lastLessonDate;
 
-  if (draft) {
-    const res = await fetch(`${API}/gists/${gist.id}`, {
-      method: 'PATCH',
-      headers: { ...headers(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: { 'inbox.json': { content: draft } } }),
-    });
-    if (res.ok) {
-      sent = true;
-      log(`paket gönderildi (${draft.length} karakter). Telefon kendiliğinden çekecek.`);
-    } else {
-      log(`gönderilemedi (${res.status}).`);
-    }
-  }
+  try {
+    /* 1) Paketi diske koy — öğretmen ağa çıkmasın, sadece okusun */
+    await writeFile(OUTBOX_FILE, raw, 'utf8');
 
-  await rm(DRAFT_FILE, { force: true });
-  await rm(OUTBOX_FILE, { force: true });
+    /**
+     * Önceki turdan **geçerli bir taslak** kaldıysa öğretmeni tekrar
+     * çalıştırma; sadece göndermeyi yeniden dene. Geçici bir ağ hatası
+     * yüzünden tamamlanmış bir turu çöpe atmak jetonun boşa gitmesi demek.
+     */
+    let draft = await readFile(DRAFT_FILE, 'utf8').catch(() => null);
+    if (draft) {
+      try {
+        JSON.parse(draft);
+        log('önceki turdan geçerli taslak bulundu — sadece gönderim denenecek.');
+      } catch {
+        draft = null;
+      }
+    }
+
+    /* 2) Öğretmeni çalıştır */
+    if (!draft) {
+      const ran = await runTeacher();
+      draft = await readFile(DRAFT_FILE, 'utf8').catch(() => null);
+      if (!draft) {
+        log(
+          ran
+            ? 'öğretmen çalıştı ama .inbox-draft.json yazmamış — paket gönderilmedi.'
+            : 'öğretmen tamamlanmadı, taslak yok.'
+        );
+      }
+    }
+
+    /* 3) Doğrula ve gönder */
+    let parsed = null;
+    if (draft) {
+      try {
+        parsed = JSON.parse(draft);
+      } catch (error) {
+        log(`taslak bozuk JSON, gönderilmedi — ${error.message}`);
+        await rm(DRAFT_FILE, { force: true });
+        draft = null;
+      }
+    }
+
+    if (draft) {
+      const res = await fetch(`${API}/gists/${gist.id}`, {
+        method: 'PATCH',
+        headers: { ...headers(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: { 'inbox.json': { content: draft } } }),
+      });
+      if (res.ok) {
+        sent = true;
+        /**
+         * "Bugünün dersi kuruldu" damgası **paketin içindeki dersin
+         * tarihinden** okunuyor. Öğretmen bir bölümde tıkanıp `lesson`
+         * alanını boş bıraktıysa gün işaretlenmemeli, yoksa dersi olmayan
+         * bir gün fark edilmeden geçer.
+         */
+        if (parsed?.lesson?.date === today) lessonDate = today;
+        await rm(DRAFT_FILE, { force: true });
+        log(
+          `paket gönderildi (${draft.length} karakter). Telefon kendiliğinden çekecek.`
+        );
+      } else {
+        // Taslak SİLİNMİYOR — bir sonraki turda gönderim tekrar denenecek
+        log(`gönderilemedi (${res.status}); taslak korundu, tekrar denenecek.`);
+      }
+    }
+  } catch (error) {
+    log(`tur hata verdi: ${error.message}`);
+  } finally {
+    await rm(OUTBOX_FILE, { force: true });
+  }
 
   await saveState({
     lastOutboxAt: sent ? generatedAt : state.lastOutboxAt,
+    fails: sent ? 0 : fails + 1,
+    lastLessonDate: lessonDate,
     lastRunAt: Date.now(),
-    lastLessonDate: sent ? today : state.lastLessonDate,
   });
+}
+
+/** Kilitli tur — aynı anda ikinci bir öğretmen süreci başlamasın */
+async function guardedTick(token, options) {
+  if (running) {
+    log('önceki tur hâlâ sürüyor, bu tur atlandı.');
+    return;
+  }
+  running = true;
+  try {
+    await tick(token, options);
+  } catch (error) {
+    log(`beklenmeyen hata: ${error.message}`);
+  } finally {
+    running = false;
+  }
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const token = await getToken();
+
+  /**
+   * Açılışta bayat `.outbox.json` temizlenir.
+   *
+   * Ctrl+C veya çökme sonrası dosya diskte kalıyordu; kullanıcı elle
+   * `/ogretmen` çalıştırdığında öğretmen kendini nöbetçi kipinde sanıp
+   * taslak yazıyor ve paket hiç gönderilmiyordu — sessiz başarısızlığın
+   * yeni bir çeşidi.
+   */
+  await rm(OUTBOX_FILE, { force: true });
+
+  const stop = () => {
+    void rm(OUTBOX_FILE, { force: true }).finally(() => process.exit(0));
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
 
   log(
     options.once
@@ -338,13 +495,11 @@ async function main() {
       : `nöbet başladı — ${options.interval} saniyede bir bakılacak. Durdurmak için Ctrl+C.`
   );
 
-  await tick(token, options);
+  await guardedTick(token, options);
   if (options.once) return;
 
   setInterval(() => {
-    void tick(token, options).catch((error) =>
-      log(`beklenmeyen hata: ${error.message}`)
-    );
+    void guardedTick(token, options);
   }, options.interval * 1000);
 }
 

@@ -889,6 +889,15 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
     kalan saat çok daha az olabilir — sabit tabloya körü körüne uyma.
   - **Tek seferde %25'ten fazla oynatma.** Uygulama zaten sınırlıyor ama sen de
     dikkat et: bir haftada "60 gün" → "20 gün" demek güven kaybettirir.
+  - ⚠️ **Sınır: 10-400 saat.** Uygulama bu aralığa kırpıyor; dışına yazarsan
+    yazdığın sayı ekrana çıkmaz.
+  - ⚠️ **Yazmadan önce ekrana ne çıkacağını hesapla:**
+    `gün ≈ remainingHours × 60 ÷ measurements.weeklyMinutes × 7`.
+    Sonuç **400 günü aşıyorsa sayıyı sen düşür.** Kullanıcı bir keresinde
+    ekranda **"2378 gün"** gördü (6.5 yıl) — o sayı bir tahmin değil, bir
+    hesabın ekrana sızmasıydı ve güveni doğrudan yıkıyor. Tempo düşükse çözüm
+    hedefi altı yıla itmek değil, `dailyMinutes`'i gerçekçi tutup `note` içinde
+    tempodan söz etmek.
 
 - **`dailyNewWords`** — Tavan 1.5'teki tabloda ("günde yeni kelime"); o sayının
   üstüne çıkma. Tavanın altında nerede duracağına **seviye etiketine bakarak
@@ -917,6 +926,13 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
 
 - **`dailyMinutes`** — Gerçekçi ol. `measurements.weeklyMinutes` ne diyorsa
   ondan çok uzaklaşma; %30'dan fazla artırma. Tutulamayan hedef, hedef değildir.
+
+- **`targetLevel`** — ⚠️ **Her zaman `profile.level`'ın tam bir üstü.**
+  A1→A2 · A2→B1 · B1→B2 · B2→C1 · C1→C2 · C2→C2. İki basamak yukarı hedef
+  yazma. `levelSuggestion` ile seviye atlattıysan hedefi **yeni** seviyenin bir
+  üstüne kur. Kullanıcının kuralı: *"her çektiğimde dinamik model olması
+  lazım."* (Uygulama bunu ayrıca zorluyor, ama sen de doğru yaz — yanlış
+  yazarsan `note` ile çelişir.)
 
 - **`focus[]`** — Üzerine gidilecek 1-3 hata kategorisi.
 

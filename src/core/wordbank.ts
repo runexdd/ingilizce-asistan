@@ -525,6 +525,49 @@ export function isTooHardFor(
 }
 
 /**
+ * Kelime bu seviyedeki biri için fazla **kolay** mı?
+ *
+ * ⚠️ Bu ölçü, kullanıcının *"B2'ye aldığımda kelime kısmı hâlâ değişmiyor"*
+ * şikâyetinin çekirdeğinde duruyor.
+ *
+ * `isTooHardFor` yalnızca **yukarı** bakıyor ve havuzun tavanı B2 olduğu için
+ * B1 ve üstünde hiçbir şeyi elemiyor (ölçüldü: A1'de 134, A2'de 49, B1/B2/C1/C2'de
+ * **0** kelime eleniyor). Süzgeç kapanınca destede biriken eski A1/A2 kartları
+ * "sırada bekleyen" sayılıp günün kotasını dolduruyor, yeni seviyenin kelimesi
+ * hiç eklenmiyordu.
+ *
+ * İki band aşağısı — B2 öğrencisine "water", "book" — artık öğretmiyor;
+ * o kartlar silinmiyor ama günün bütçesini de yemiyor.
+ */
+export function isTooEasyFor(
+  word: string,
+  level: string,
+  tolerance = 1
+): boolean {
+  const found = levelOfWord(word);
+  if (!found) return false;
+  return levelIndex(level) - LEVELS.indexOf(found) > tolerance;
+}
+
+/**
+ * Kelime bu seviye için **uygun** mu — ne fazla ağır ne fazla kolay.
+ * Havuzda olmayan kelime uygun sayılır; hüküm vermek için veri yok.
+ */
+export function fitsLevel(word: string, level: string): boolean {
+  return !isTooHardFor(word, level) && !isTooEasyFor(word, level);
+}
+
+/**
+ * Kelimenin seviyeye uzaklığı — sıralama için. Küçük olan öne gelir.
+ * Havuzda olmayan kelime ortada bir yerde durur (2).
+ */
+export function levelDistance(word: string, level: string): number {
+  const found = levelOfWord(word);
+  if (!found) return 2;
+  return Math.abs(LEVELS.indexOf(found) - levelIndex(level));
+}
+
+/**
  * Tohumdan türeyen sayı üreteci.
  *
  * Neden rastgele değil: aynı gün uygulamayı iki kez açınca aynı beş kelime

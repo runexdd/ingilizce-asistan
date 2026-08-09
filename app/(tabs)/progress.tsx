@@ -21,9 +21,16 @@ export default function ProgressScreen() {
   /* Hedef tahmini ve gidişatı. Kaydı Öğretmen ekranı tutuyor; burası sadece
      gösteriyor — aynı kaydı iki ekranın birden yazması karışıklık yaratır. */
   const history = data.targetHistory ?? [];
+  // Kıyas noktası bugünün kendi kaydı olmamalı (bkz. teacher.tsx'teki not)
+  const todayISO = new Date().toISOString().slice(0, 10);
   const estimate = useMemo(
-    () => estimateTarget(data, new Date(), history.at(-1)?.daysRemaining),
-    [data, history]
+    () =>
+      estimateTarget(
+        data,
+        new Date(),
+        history.filter((p) => p.date !== todayISO).at(-1)?.daysRemaining
+      ),
+    [data, history, todayISO]
   );
   const trend = useMemo(
     () => (estimate ? targetTrend(history, estimate.daysRemaining) : null),
