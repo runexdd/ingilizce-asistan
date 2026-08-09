@@ -9,9 +9,57 @@
 import type { CardStage } from '../core/cardcheck';
 import type { LevelSizing } from '../core/level';
 
+/**
+ * Kullanıcının seçtiği zevkler — **aşamalı seçimle** doldurulur.
+ *
+ * Neden serbest metin değil: kullanıcı *"bu tercihleri biz yazmayalım, aşamalı
+ * seçenek kısmını getir"* dedi. Boş bir kutuya "zevklerin neler" diye sormak
+ * ya boş bırakılıyor ya da öğretmenin işine yaramayan iki kelime alıyor.
+ * Seçenek listesi hem hatırlatıyor hem de öğretmene **aynı sözcüklerle** veri
+ * veriyor — "metal" ile "metal müzik" ayrı şeyler sanılmıyor.
+ */
+export interface Tastes {
+  /** İlgi alanları: 'muzik', 'dizi', 'spor', 'oyun'... */
+  areas: string[];
+  /** Müzik türleri — sadece 'muzik' seçiliyse sorulur */
+  music: string[];
+  /** Dizi/film türleri */
+  screen: string[];
+  /** Spor dalları */
+  sports: string[];
+  /** Diğer alanlarda seçilenler (oyun, teknoloji, yemek…) */
+  other: string[];
+  /** "Kendim yazmak istiyorum" diyenin serbest notu */
+  note?: string;
+  /** Son güncelleme — öğretmen değişikliği fark etsin */
+  updatedAt?: string;
+}
+
 export interface Profile {
   /** CEFR seviyesi: A1, A2, B1, B2, C1, C2 — yerleştirme sınavı belirler */
   level: string;
+  /**
+   * **Seviyenin neresindesin — 0-100.**
+   *
+   * Kullanıcının tespiti: *"A2 ama A2'de kaç puan? A2 80 puan, B1'e yakın;
+   * veya A2 30 puan."* CEFR etiketi bir **aralıktır**, bir nokta değil. Aynı
+   * "B1" iki kişide bambaşka şey demek olabilir ve ikisine aynı içerik
+   * verilirse biri sıkılır, öteki boğulur.
+   *
+   * Kaynağı seviye sınavı (`levelExam`); sonra öğretmen her senkronda gerçek
+   * performansa göre günceller. Boşsa "henüz ölçülmedi" demektir — uygulama
+   * kendi kendine bir sayı uydurmaz.
+   */
+  levelScore?: number;
+  /**
+   * Seviyenin **en son değiştiği** an (ISO).
+   *
+   * Bunsuz uygulama seviye değiştiğini fark edemiyordu: kullanıcı A2'den
+   * B1'e geçtiği hâlde ekranda hâlâ A2 için seçilmiş dizi bölümü duruyordu.
+   * Bu damga öğretmenden gelen paketin tarihiyle karşılaştırılıyor; paket
+   * eskiyse içerik "seviyen değişti, yenisi geliyor" diye işaretleniyor.
+   */
+  levelChangedAt?: string;
   /** Virgülle ayrılmış hedefler: 'gunluk,is' gibi */
   goals: string;
   weekdayMinutes: number;
@@ -35,14 +83,10 @@ export interface Profile {
    */
   speechRate?: number;
   /**
-   * Kullanıcının zevkleri — serbest metin.
-   *
-   * "rock, metal, Metallica, süper kahraman dizileri, bilim kurgu, futbol"
-   * gibi. Öğretmen dizi/film/müzik önerisini ve günün sohbet konusunu buradan
-   * seçer. Kimseye uymayan genel öneri (ders kitabı diyaloğu) yerine
-   * gerçekten açıp izleyeceği/dinleyeceği şey önerilsin diye var.
+   * Aşamalı seçimle doldurulan zevkler. Öğretmen dizi/film/müzik önerisini ve
+   * günün sohbet konusunu buradan seçer.
    */
-  interests?: string;
+  tastes?: Tastes;
 }
 
 export interface Card {
@@ -474,6 +518,69 @@ export interface AppData {
   conversations: ConversationRecord[];
   /** Hedef tarihinin gün gün geçmişi — "dün 80'di, bugün 78" grafiği */
   targetHistory: TargetPoint[];
+  /** Seviye içi puanlama sınavının son sonucu */
+  levelExam?: LevelExamResult;
+  /**
+   * Öğretmenden en son paket **ne zaman üretildi** (inbox `generatedAt`).
+   *
+   * `profile.levelChangedAt` bundan yeniyse elimizdeki ders/içerik/sohbet
+   * eski seviyeye göre yazılmış demektir; ekran bunu "eskimiş" diye
+   * işaretler. Aksi hâlde B1'e geçmiş birine A2 için seçilmiş dizi bölümü
+   * gösterilmeye devam ediyor.
+   */
+  lastInboxAt?: string;
+}
+
+/* ------------------------------------------------- seviye içi puanlama */
+
+export type LevelExamSkill =
+  | 'vocabulary'
+  | 'grammar'
+  | 'listening'
+  | 'writing'
+  | 'speaking';
+
+export interface LevelExamSkillScore {
+  skill: LevelExamSkill;
+  /** 0-100 */
+  score: number;
+  /** Kaç soru soruldu */
+  total: number;
+}
+
+/**
+ * Seviye içi puanlama sınavının sonucu.
+ *
+ * **Yerleştirme sınavından farkı:** o hangi seviyede olduğunu bulur (adaptif,
+ * tüm seviyelerden soru sorar). Bu ise seviyeyi **bilerek** girer ve *o
+ * seviyenin içinde nerede durduğunu* ölçer. Kullanıcının kuralı: *"ilk sınav
+ * seviye tespit, 2. sınav o seviye için puanlama sistemi olmalı."*
+ */
+export interface LevelExamResult {
+  /** Hangi seviye için yapıldı */
+  level: string;
+  /** 'YYYY-MM-DD' */
+  date: string;
+  /** Seviye içi konum 0-100 */
+  score: number;
+  skills: LevelExamSkillScore[];
+  /** En zayıf beceri */
+  weakest: LevelExamSkill | null;
+  /**
+   * Yazma ve konuşma cevapları — öğretmen bunları okuyup puanı düzeltecek.
+   * Uygulama bunlara ancak kaba bir puan verebilir (kelime sayısı, hedef
+   * kelime kullanımı, yerel hata kontrolü); asıl yargı öğretmenindir.
+   */
+  responses: Array<{
+    questionId: string;
+    skill: LevelExamSkill;
+    prompt: string;
+    answer: string;
+    /** Konuşma cevabı mikrofonla mı geldi */
+    via?: 'mic' | 'text';
+  }>;
+  /** Öğretmene gönderildi mi */
+  syncState: 'pending' | 'synced';
 }
 
 export const DATA_VERSION = 1;

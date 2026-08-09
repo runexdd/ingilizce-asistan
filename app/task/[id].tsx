@@ -25,6 +25,7 @@ import {
   type SpeechInputHandle,
 } from '../../src/core/speechInput';
 import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
+import { isContentStale } from '../../src/db/selectors';
 import { useStore } from '../../src/db/store';
 import { TappableText } from '../../src/ui/TappableText';
 import { colors, radius, spacing } from '../../src/ui/theme';
@@ -64,10 +65,12 @@ function WritingTask({ long }: { long: boolean }) {
   const [text, setText] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
-  // Öğretmenin gönderdiği görev varsa onu kullan
-  const suggested = data.suggestedTasks.find((t) =>
-    long ? t.kind === 'writing-long' : t.kind === 'writing-micro'
-  );
+  // Öğretmenin gönderdiği görev varsa onu kullan — seviye değiştiyse eskidi
+  const suggested = isContentStale(data)
+    ? undefined
+    : data.suggestedTasks.find((t) =>
+        long ? t.kind === 'writing-long' : t.kind === 'writing-micro'
+      );
 
   /**
    * Öğretmen görev göndermemişse yedek görev **seviyeye göre** kurulur.
@@ -213,14 +216,27 @@ function ReadingTask() {
     }));
   }
 
-  // Öğretmenin bugün için yazdığı bölüm — en öncelikli kaynak
+  /**
+   * Öğretmenin içeriği en öncelikli kaynaktır — **eskimediği sürece.**
+   *
+   * Kullanıcı seviyesini elle değiştirdiğinde öğretmenden gelen paket bir
+   * önceki seviyeye göre yazılmıştır. Kullanıcının şikâyeti buydu: *"ben
+   * seviyeyi elle B1 yapıyorum, hâlâ eski kelime geliyor; reading, writing de
+   * aynı."* Öğretmen yeni paketi ancak bir sonraki senkronda gönderebilir; o
+   * ana kadar eski seviyenin metnini göstermek yerine seviyeye uygun yerel
+   * parçaya düşüyoruz. `isContentStale` = seviye, son pakettten sonra değişti.
+   */
+  const stale = isContentStale(data);
+
   const lesson = data.lesson;
   const todayISO = new Date().toISOString().slice(0, 10);
   const lessonPassage =
-    lesson?.passage && lesson.date === todayISO ? lesson.passage : null;
+    !stale && lesson?.passage && lesson.date === todayISO ? lesson.passage : null;
 
   // Öğretmenin gönderdiği dış okuma görevi (haber, makale)
-  const teacherReading = data.content.find((c) => c.skill === 'reading' && !c.done);
+  const teacherReading = stale
+    ? undefined
+    : data.content.find((c) => c.skill === 'reading' && !c.done);
 
   const passage: ReadingPassage | null = useMemo(
     () =>
@@ -482,7 +498,10 @@ function SpeakingTask() {
   const level = data.profile.level;
   const spec = specOf(level, data.plan?.sizing);
 
-  const suggested = data.suggestedTasks.find((t) => t.kind === 'speaking');
+  // Seviye değiştiyse öğretmenin görevi eski seviyeye ait — yerele düş
+  const suggested = isContentStale(data)
+    ? undefined
+    : data.suggestedTasks.find((t) => t.kind === 'speaking');
   const prompt =
     suggested?.prompt ??
     `Talk for about ${spec.speakingSeconds} seconds. ${speakingPromptFor(level)}`;

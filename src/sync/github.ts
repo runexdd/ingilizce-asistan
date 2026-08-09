@@ -16,7 +16,12 @@ import {
   measureProgress,
 } from '../core/progress';
 import { addDays, toISODate } from '../core/srs';
-import { getTodayWordProgress, type WordProgress } from '../db/selectors';
+import { describeTastes } from '../core/tastes';
+import {
+  getTodayWordProgress,
+  isContentStale,
+  type WordProgress,
+} from '../db/selectors';
 import type {
   AppData,
   ContentSuggestion,
@@ -24,7 +29,9 @@ import type {
   ConversationReview,
   DailyLesson,
   Feedback,
+  LevelExamResult,
   SuggestedTask,
+  Tastes,
   TaskRecord,
   TeacherPlan,
   TeacherScore,
@@ -64,13 +71,27 @@ export interface OutboxPayload {
   generatedAt: string;
   profile: {
     level: string;
+    /**
+     * **Seviyenin neresinde — 0-100.** "B1" bir aralıktır; B1'in başındaki
+     * kişiyle sonundaki kişi aynı içeriği kaldırmaz. İçerik, kelime sayısı ve
+     * görev boyu seçilirken bakılacak asıl sayı budur.
+     */
+    levelScore?: number;
+    /** Seviye en son ne zaman değişti (ISO) — eski içerik tespiti için */
+    levelChangedAt?: string;
+    /** Seviye bu paketten sonra mı değişti — öyleyse içeriği baştan kur */
+    levelJustChanged?: boolean;
     goals: string;
     weakestSkill?: string;
     weekdayMinutes: number;
     weekendMinutes: number;
-    /** Zevkleri — dizi/film/müzik önerisi ve sohbet konusu buradan seçilir */
+    /** Zevkleri — okunabilir özet ("Müzik: Rock, Metal · Dizi/film: …") */
     interests?: string;
+    /** Zevklerin ham hâli — aşamalı seçimden gelen anahtarlar */
+    tastes?: Tastes;
   };
+  /** Seviye içi puanlama sınavının son sonucu — öğretmen puanı düzeltecek */
+  levelExam?: LevelExamResult;
   /** Düzeltme bekleyen görevler */
   pendingTasks: OutboxTask[];
   /** En sık tekrarlanan hatalar — görev üretiminin girdisi */
@@ -150,6 +171,13 @@ export interface InboxPayload {
    * ilk düzeltmeden sonra gerçek hatalardan belirlenir.
    */
   weakestSkillSuggestion?: string;
+  /**
+   * Seviye içi puan önerisi (0-100).
+   *
+   * Sınav bir başlangıç ölçümü; asıl kaynak günlük performans. Öğretmen bunu
+   * her senkronda azar azar oynatır ve içerik seçimini buna göre yapar.
+   */
+  levelScoreSuggestion?: number;
   /** Haftalık rapor metni (pazar günleri) */
   weeklyReport?: string;
   content?: ContentSuggestion[];
@@ -325,12 +353,18 @@ export function buildOutbox(data: AppData): OutboxPayload {
     generatedAt: new Date().toISOString(),
     profile: {
       level: data.profile.level,
+      levelScore: data.profile.levelScore,
+      levelChangedAt: data.profile.levelChangedAt,
+      levelJustChanged: isContentStale(data),
       goals: data.profile.goals,
       weakestSkill: data.profile.weakestSkill,
       weekdayMinutes: data.profile.weekdayMinutes,
       weekendMinutes: data.profile.weekendMinutes,
-      interests: data.profile.interests,
+      interests: describeTastes(data.profile.tastes) || undefined,
+      tastes: data.profile.tastes,
     },
+    levelExam:
+      data.levelExam?.syncState === 'pending' ? data.levelExam : undefined,
     pendingTasks: pending.map((t) => ({
       id: t.id,
       kind: t.kind,

@@ -15,7 +15,12 @@ import {
   isTeacherTuned,
   specOf,
 } from '../../src/core/level';
+import {
+  SKILL_LABELS as EXAM_SKILL_TR,
+  describeLevelScore,
+} from '../../src/core/levelexam';
 import { SKILL_LABELS, type QuestionSkill } from '../../src/core/placement';
+import { describeTastes, isEmpty as isTastesEmpty } from '../../src/core/tastes';
 import {
   listEnglishVoices,
   setPreferredVoice,
@@ -60,8 +65,9 @@ export default function SettingsScreen() {
 
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [tokenInput, setTokenInput] = useState('');
-  /** Yazarken her harfte veriye yazmamak için yerel kopya; odak çıkınca kaydedilir */
-  const [interests, setInterests] = useState(profile.interests ?? '');
+
+  const tastesEmpty = isTastesEmpty(profile.tastes);
+  const tasteSummary = describeTastes(profile.tastes);
 
   // Cihazdaki sesleri bir kez yükle; kaydedilmiş tercihi motora bildir
   useEffect(() => {
@@ -207,6 +213,38 @@ export default function SettingsScreen() {
           </Text>
         </Pressable>
 
+        {/* Seviye içi puan — "A2" bir aralık, bir nokta değil.
+            Kullanıcının tespiti: *"A2 ama A2'de kaç puan? A2 80 puan, B1'e
+            yakın; veya A2 30 puan."* İçerik seçimi bu sayıya bakıyor. */}
+        <Pressable
+          style={[styles.row, styles.rowDivider]}
+          onPress={() => router.push('/levelexam')}
+        >
+          <View style={styles.rowMain}>
+            <Text style={styles.labelAccent}>
+              {profile.levelScore === undefined
+                ? 'Seviye içi puanlama sınavı'
+                : 'Puanı yeniden ölç'}
+            </Text>
+            <Text style={styles.hint}>
+              {describeLevelScore(profile.level, profile.levelScore)}
+              {'\n'}
+              {profile.levelScore === undefined
+                ? `${profile.level} seviyesine özel 12 soru: kelime, gramer, dinleme, yazma, konuşma. ~8 dakika.`
+                : data.levelExam
+                  ? `Son ölçüm: ${data.levelExam.date}${
+                      data.levelExam.weakest
+                        ? ` · en zayıf: ${EXAM_SKILL_TR[data.levelExam.weakest]}`
+                        : ''
+                    }`
+                  : 'Öğretmen bu puanı her senkronda güncelliyor.'}
+            </Text>
+          </View>
+          <Text style={styles.valueAccent}>
+            {profile.levelScore === undefined ? 'Başla →' : String(profile.levelScore)}
+          </Text>
+        </Pressable>
+
         {/* Seviyenin somut karşılığı. "A2" tek başına bir şey ifade etmiyor;
             görevlerin ve metinlerin neye göre ayarlandığı burada görünsün. */}
         <View style={[styles.row, styles.rowDivider]}>
@@ -246,32 +284,25 @@ export default function SettingsScreen() {
       </View>
 
       {/* ------------------------------------------------------ zevkler
-          Öğretmen dizi/film/müzik önerisini ve günün sohbet konusunu buradan
-          seçiyor. Boş bırakılırsa öneriler herkese uyan, kimsenin açmadığı
-          genel içeriğe düşer — o yüzden ekranda niye önemli olduğu yazıyor. */}
+          Aşamalı seçimle dolduruluyor (app/interests.tsx). Serbest metin
+          kutusu kaldırıldı: kullanıcı *"bu tercihleri biz yazmayalım, aşamalı
+          seçenek kısmını getir"* dedi ve haklı — boş kutu ya boş kalıyor ya da
+          öğretmenin işine yaramayan iki kelime alıyor. */}
       <Text style={styles.groupTitle}>Zevklerim</Text>
       <View style={styles.group}>
-        <View style={styles.connectBox}>
-          <Text style={styles.hint}>
-            Ne dinlersin, ne izlersin? Öğretmen günlük dizi/şarkı önerisini ve
-            üstüne konuşulacak sohbeti buna göre seçiyor. Serbest yaz, virgülle
-            ayır.
-          </Text>
-          <TextInput
-            style={[styles.input, { minHeight: 72 }]}
-            value={interests}
-            onChangeText={setInterests}
-            onBlur={() =>
-              update((c) => updateProfile(c, { interests: interests.trim() }))
-            }
-            placeholder="rock, metal, Metallica, süper kahraman dizileri, bilim kurgu, futbol"
-            placeholderTextColor={colors.muted}
-            multiline
-          />
-          <Text style={styles.hint}>
-            Bir sonraki senkronda öğretmene gider.
-          </Text>
-        </View>
+        <Pressable style={styles.row} onPress={() => router.push('/interests')}>
+          <View style={styles.rowMain}>
+            <Text style={styles.labelAccent}>
+              {tastesEmpty ? 'Zevklerini seç' : 'Zevklerini düzenle'}
+            </Text>
+            <Text style={styles.hint}>
+              {tastesEmpty
+                ? 'Birkaç dokunuş: ilgi alanı → müzik türü → dizi türü. Öğretmen günlük dizi/şarkı önerisini ve sohbet konusunu buna göre seçiyor.'
+                : tasteSummary}
+            </Text>
+          </View>
+          <Text style={styles.valueAccent}>→</Text>
+        </Pressable>
       </View>
 
       {/* ------------------------------------------------------- köprü */}

@@ -167,6 +167,26 @@ export function getTodayWordProgress(
  * tekrarı geldi" derken kart ekranı "5 kart kaldı" diyor ve kullanıcı hangi
  * sayının doğru olduğunu bilemiyor.
  */
+/**
+ * Öğretmenden gelen ders/içerik/sohbet, elimizdeki seviyeye göre **eski mi**?
+ *
+ * Kullanıcı seviyesini A2'den B1'e çektiğinde ekranda hâlâ A2 için seçilmiş
+ * dizi bölümü ("The Flash 1. bölüm") duruyordu — içerik öğretmenden gelen eski
+ * pakette yazdığı için. Uygulama yeni içerik **üretemez** (onu öğretmen
+ * üretir), ama eskidiğini **söyleyebilir**; sessizce yanlış şeyi göstermek
+ * dinamik olmayan bir sistem hissi veriyor.
+ *
+ * ⚠️ Bu fonksiyon `mutations.ts` yerine burada duruyor: `github.ts` bunu
+ * kullanıyor ve `mutations.ts` de `github.ts`'ten tip alıyor — orada dursaydı
+ * çalışma anında döngüsel bağımlılık olurdu.
+ */
+export function isContentStale(data: AppData): boolean {
+  const changed = data.profile.levelChangedAt;
+  if (!changed) return false;
+  if (!data.lastInboxAt) return true;
+  return changed > data.lastInboxAt;
+}
+
 export function getDueCardCount(data: AppData, today: Date = new Date()): number {
   const iso = toISODate(today);
   const lessonWords = new Set(

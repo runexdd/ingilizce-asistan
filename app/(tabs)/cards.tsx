@@ -80,12 +80,22 @@ export default function CardsScreen() {
    * doldur. Ekran açılışında bir kez: `seedDailyWords` kotayı aşmıyor ama
    * her render'da veri yazmanın da anlamı yok.
    */
-  const seeded = useRef(false);
+  /**
+   * ⚠️ Koruma seviyeye bağlı olmalı, sadece "bir kez çalıştı"ya değil.
+   *
+   * Sekmeler bellekte kalıyor; kullanıcı Ayarlar'dan seviyeyi değiştirip
+   * Kartlar'a döndüğünde bileşen yeniden kurulmuyor. Basit bir `useRef(false)`
+   * ile tohumlama bir daha çalışmıyor ve kullanıcı eski seviyenin kelimelerini
+   * görmeye devam ediyordu: *"seviyeyi elle B1 yapıyorum, dinamik olarak yeni
+   * kelime gelmiyor."*
+   */
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
-    if (seeded.current) return;
-    seeded.current = true;
+    const key = `${data.profile.level}|${data.profile.levelChangedAt ?? ''}`;
+    if (seededFor.current === key) return;
+    seededFor.current = key;
     update((d) => seedDailyWords(d, dailyNewWords));
-  }, [dailyNewWords, update]);
+  }, [data.profile.level, data.profile.levelChangedAt, dailyNewWords, update]);
 
   if (!card) {
     return (

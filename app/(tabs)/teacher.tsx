@@ -20,9 +20,11 @@ import { useEffect, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { conversationStats } from '../../src/core/conversation';
 import { nextLevel } from '../../src/core/level';
+import { describeLevelScore } from '../../src/core/levelexam';
 import { estimateTarget, targetTrend } from '../../src/core/progress';
 import { toISODate } from '../../src/core/srs';
 import { markContentDone } from '../../src/db/mutations';
+import { isContentStale } from '../../src/db/selectors';
 import { useStore } from '../../src/db/store';
 import { colors, radius, spacing } from '../../src/ui/theme';
 import type { ContentSuggestion } from '../../src/db/types';
@@ -94,6 +96,12 @@ export default function TeacherScreen() {
   const todayConversation = (data.conversations ?? []).find((c) => c.date === today);
   const reviewed = (data.conversations ?? []).filter((c) => c.review).slice(-1)[0];
 
+  /**
+   * Seviye, öğretmenin son paketinden **sonra** mı değişti? Öyleyse elimizdeki
+   * dizi/şarkı/sohbet eski seviyeye göre yazılmıştır.
+   */
+  const stale = isContentStale(data);
+
   const watch = data.content.filter((c) => c.type !== 'task');
   const chores = data.content.filter((c) => c.type === 'task');
 
@@ -101,6 +109,26 @@ export default function TeacherScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: spacing.md }}>
+      {/* ---------------------------------------------- seviye değişti mi
+          Kullanıcının şikâyeti: *"seviyemi A2'den B1'e götürdüm, hâlâ The
+          Flash diyorsun."* Uygulama yeni içerik üretemez — onu öğretmen
+          üretir — ama eskidiğini söyleyebilir. Sessizce yanlış şeyi
+          göstermek, sistemin dinamik olmadığı hissini veren asıl şeydi. */}
+      {stale ? (
+        <View style={styles.staleBox}>
+          <Text style={styles.staleTitle}>
+            Seviyen {data.profile.level} oldu — aşağıdaki içerik eski seviyene göre
+            seçilmişti
+          </Text>
+          <Text style={styles.staleText}>
+            Dizi/şarkı önerisini ve sohbeti öğretmen seçiyor, uygulama değil.
+            Yeni seviyene göre olanlar bir sonraki senkronda gelecek; o zamana
+            kadar kartlar ve okuma zaten {data.profile.level} seviyesinden
+            geliyor.
+          </Text>
+        </View>
+      ) : null}
+
       {/* ---------------------------------------- öğretmenin bugünkü sözü */}
       <View style={styles.hero}>
         <Text style={styles.heroLabel}>Öğretmenin bugünkü notu</Text>
@@ -131,6 +159,25 @@ export default function TeacherScreen() {
             <Text style={styles.daysText}>{estimate.daysRemaining} gün</Text>
           ) : null}
         </View>
+
+        {/* Seviye içi konum — "B1" bir aralıktır, bir nokta değil.
+            Çubuk mevcut seviyenin içinde nerede durduğunu gösteriyor. */}
+        <View style={styles.scoreTrack}>
+          <View
+            style={[
+              styles.scoreFill,
+              { width: `${data.profile.levelScore ?? 0}%` },
+            ]}
+          />
+        </View>
+        <Pressable onPress={() => router.push('/levelexam')}>
+          <Text style={styles.scoreText}>
+            {describeLevelScore(data.profile.level, data.profile.levelScore)}
+            {data.profile.levelScore === undefined
+              ? ' — ölçmek için dokun'
+              : ` · ${data.profile.levelScore}/100`}
+          </Text>
+        </Pressable>
 
         {estimate && trend ? (
           <>
@@ -461,6 +508,36 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 21,
     marginTop: spacing.xs,
+  },
+  scoreTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+    overflow: 'hidden',
+    marginTop: spacing.md,
+  },
+  scoreFill: { height: 8, borderRadius: 4, backgroundColor: colors.weekend },
+  scoreText: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: spacing.xs + 2,
+    lineHeight: 19,
+  },
+
+  staleBox: {
+    backgroundColor: '#FFFAEB',
+    borderWidth: 1,
+    borderColor: '#FEC84B',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  staleTitle: { fontSize: 15, fontWeight: '700', color: '#93370D', lineHeight: 22 },
+  staleText: {
+    fontSize: 14,
+    color: '#93370D',
+    lineHeight: 21,
+    marginTop: spacing.sm,
   },
 
   /* sohbet */

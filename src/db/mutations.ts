@@ -3,11 +3,13 @@ import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import { isTooHardFor, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
+import { isContentStale } from './selectors';
 import type {
   AppData,
   ConversationMessage,
   ConversationRecord,
   Feedback,
+  LevelExamResult,
   Profile,
   SyncState,
   TargetPoint,
@@ -20,7 +22,51 @@ import type {
  */
 
 export function updateProfile(data: AppData, patch: Partial<Profile>): AppData {
-  return { ...data, profile: { ...data.profile, ...patch } };
+  /**
+   * **Seviye değiştiyse damgala.**
+   *
+   * Bunsuz uygulama seviye değiştiğini fark edemiyordu: kullanıcı A2'den B1'e
+   * geçtiği hâlde ekranda hâlâ A2 için seçilmiş dizi bölümü ("The Flash 1.
+   * bölüm") duruyordu, çünkü içerik öğretmenden gelen eski pakette yazıyordu.
+   * Damga, elimizdeki ders/içerik/sohbetin **eskimiş** olduğunu anlamayı ve
+   * ekranda dürüstçe söylemeyi sağlıyor.
+   *
+   * Seviye içi puan da sıfırlanıyor: B1'e yeni geçen birinin A2'deki 85 puanı
+   * artık bir şey ifade etmez, yeniden ölçülmesi gerekir.
+   */
+  const levelChanged =
+    patch.level !== undefined && patch.level !== data.profile.level;
+
+  return {
+    ...data,
+    profile: {
+      ...data.profile,
+      ...patch,
+      ...(levelChanged
+        ? {
+            levelChangedAt: new Date().toISOString(),
+            levelScore: patch.levelScore ?? undefined,
+          }
+        : {}),
+    },
+  };
+}
+
+/** Seviye içi puanlama sınavının sonucunu kaydeder ve puanı profile yazar. */
+export function saveLevelExam(data: AppData, result: LevelExamResult): AppData {
+  return {
+    ...data,
+    levelExam: result,
+    profile: { ...data.profile, levelScore: result.score },
+  };
+}
+
+export function markLevelExamSynced(data: AppData): AppData {
+  if (!data.levelExam) return data;
+  return {
+    ...data,
+    levelExam: { ...data.levelExam, syncState: 'synced' as const },
+  };
 }
 
 /** Kartı değerlendirir ve yeni tekrar tarihini yazar. */
@@ -108,9 +154,45 @@ export function seedDailyWords(
   today: Date = new Date()
 ): AppData {
   const iso = toISODate(today);
-  if (data.lesson?.date === iso) return data;
 
-  const introducedToday = data.cards.filter((c) => c.introducedAt === iso).length;
+  /**
+   * Seviye değiştiyse öğretmenin bugünkü dersi **eski seviyeye aittir** ve
+   * yolu tıkamamalıdır. Kullanıcının şikâyeti: *"seviyeyi elle B1 yapıyorum,
+   * dinamik olarak yeni kelime gelmiyor, hâlâ eski kelime geliyor."*
+   */
+  const stale = isContentStale(data);
+  if (!stale && data.lesson?.date === iso) return data;
+
+  /**
+   * Seviye değişimi günü **sıfırlar.**
+   *
+   * Elle seviye değiştirmek "bana verilen şey yanlıştı" demektir; o güne ait
+   * eski seviyenin kotası yeni seviyeyi kilitlememeli. Bu yüzden:
+   *  - henüz hiç çalışılmamış, havuzdan otomatik gelmiş eski kartlar silinir
+   *    (kullanıcı verisi değil, uygulamanın kendi tohumu)
+   *  - seviye değişiminden önce cevaplanan kartlar günün kotasını doldurmuş
+   *    sayılmaz
+   *
+   * Öğretmenin gönderdiği kartlara ve kullanıcının çalıştığı kartlara
+   * dokunulmaz — onlar emek, tohum değil.
+   */
+  const seededTheme = /^(A1|A2|B1|B2|C1|C2) kelime çalışması$/;
+  const base: AppData = stale
+    ? {
+        ...data,
+        cards: data.cards.filter(
+          (c) => c.introducedAt || !(c.theme && seededTheme.test(c.theme))
+        ),
+      }
+    : data;
+
+  const changedAt = base.profile.levelChangedAt;
+  const introducedToday = base.cards.filter((c) => {
+    if (c.introducedAt !== iso) return false;
+    if (!stale || !changedAt) return true;
+    // Seviye değişiminden ÖNCE cevaplanmışsa yeni seviyenin bütçesinden yemez
+    return (c.lastAnsweredAt ?? c.introducedAt) >= changedAt;
+  }).length;
 
   /**
    * Sırada bekleyen kartlar sayılırken **seviyenin çok üstündekiler sayılmaz.**
@@ -121,21 +203,21 @@ export function seedDailyWords(
    * dolu görünüyor, yeni kelime eklenmiyor, kuyruk da onları geriye atınca
    * çalışacak hiçbir şey kalmıyordu.
    */
-  const waiting = data.cards.filter(
-    (c) => !c.introducedAt && !isTooHardFor(c.word, data.profile.level)
+  const waiting = base.cards.filter(
+    (c) => !c.introducedAt && !isTooHardFor(c.word, base.profile.level)
   ).length;
 
   const need = dailyNewWords - introducedToday - waiting;
-  if (need <= 0) return data;
+  if (need <= 0) return base;
 
   const picks = wordsForLevel(
-    data.profile.level,
+    base.profile.level,
     need,
-    data.cards.map((c) => c.word),
+    base.cards.map((c) => c.word),
     iso
   );
 
-  let next = data;
+  let next = base;
   for (const w of picks) {
     next = addCard(next, w.word, w.meaning, w.example, null, today, {
       theme: `${w.level} kelime çalışması`,
@@ -528,6 +610,17 @@ export function applyInbox(
   if (inbox.weakestSkillSuggestion) {
     profilePatch.weakestSkill = inbox.weakestSkillSuggestion;
   }
+  /**
+   * Seviye içi puanı öğretmen günceller.
+   *
+   * Sınav bir başlangıç ölçümü; asıl kaynak günlük performans. Öğretmen bu
+   * sayıyı her senkronda azar azar oynatıyor ve içerik seçimini buna göre
+   * yapıyor — "B1" etiketi tek başına yetmiyor, B1'in başı ile sonu aynı
+   * içeriği kaldırmıyor.
+   */
+  if (typeof inbox.levelScoreSuggestion === 'number') {
+    profilePatch.levelScore = Math.max(0, Math.min(100, inbox.levelScoreSuggestion));
+  }
   if (Object.keys(profilePatch).length > 0) {
     next = updateProfile(next, profilePatch);
   }
@@ -595,9 +688,16 @@ export function applyInbox(
     conversationPlan: inbox.conversation ?? next.conversationPlan,
     conversations,
     scores,
+    /**
+     * Paketin **üretildiği** an saklanıyor (indiği an değil).
+     * `profile.levelChangedAt` bundan yeniyse elimizdeki içerik eski seviyeye
+     * göre yazılmış demektir ve ekran onu "eskimiş" diye işaretler.
+     */
+    lastInboxAt: inbox.generatedAt ?? new Date().toISOString(),
     sync: { ...next.sync, lastPullAt: new Date().toISOString() },
   };
 }
+
 
 /** Günlük oturumu kaydeder — seri ve ilerleme grafiği bunu kullanır. */
 export function recordSession(

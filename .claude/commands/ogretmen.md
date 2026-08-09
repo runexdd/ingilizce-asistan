@@ -70,6 +70,83 @@ eder, ses karşılaştırılır). Her kelime için gelen alanlar:
 denenmemiş; okuma parçasında o kelimeyi tekrar geçir ve konuşma görevinde
 kullanmasını iste.
 
+## 1.2 Seviye **değişmiş mi** — ⚠️ önce buna bak
+
+`profile.levelJustChanged` **true** ise kullanıcı (ya da sen) seviyeyi son
+paketten sonra değiştirmiş demektir. Elindeki her şey — dizi bölümü, şarkı,
+sohbet, okuma parçası, kelime seti — **eski seviyeye göre yazılmıştı.**
+
+Kullanıcının şikâyeti aynen şuydu: *"seviyemi denemek için A2'den B1'e
+götürdüm, hâlâ The Flash diyorsun; dinamik model olmamış."*
+
+Bu bayrak geldiğinde:
+
+1. **Devam eden hiçbir şeyi sürdürme.** Hikâyeyi kaldığı bölümden devam
+   ettirme, diziyi sıradaki bölümden verme — yeni seviyeye göre **baştan** seç.
+   `contentLog`'daki geçmiş bir *bilgi*dir, bir *taahhüt* değil.
+2. **Kelime setini yenile.** Eski seviyenin kelimeleri artık ya çok kolay ya
+   çok zor. `dailyNewWords`'ü yeni seviyenin tavanına göre kur.
+3. **`plan.note` içinde tek cümleyle söyle** — kullanıcı ekranda "seviyen
+   değişti" uyarısını görüyor, senden de bir karşılık bekliyor.
+4. `remainingHours` ve `targetDate`'i yeni hedefe göre baştan hesapla; §5.5'teki
+   "günde 1-3 gün" sınırı burada geçerli değil, seviye değişimi zaten büyük bir
+   olaydır.
+
+## 1.3 Seviye **içi** puan (`profile.levelScore`) — 0-100
+
+Kullanıcının tespiti: *"A2 ama A2'de kaç puan? A2 80 puan, B1'e yakın; veya A2
+30 puan. Ona göre farklı tercihler, farklı müzik türleri."*
+
+CEFR etiketi bir **aralıktır**, bir nokta değil. `profile.level` hangi bandda
+olduğunu, `profile.levelScore` o bandın neresinde durduğunu söyler. **İkisine
+birden bak.**
+
+| Puan | Ne demek | İçerik ve görev nasıl kurulur |
+|---|---|---|
+| **0-25** | Banda yeni girmiş | Bandın **alt** ucundan ver; bir önceki seviyeden yapı tekrarı serbest. Kısa içerik, altyazılı, bol tekrar. |
+| **26-50** | Bandın ilk yarısı | Tam bandın ölçüsü, güvenli bölge. Yeni yapıyı azar azar sok. |
+| **51-75** | Bandın üst yarısı | Ölçüleri tablonun üst sınırına çek; ara sıra bir üst bandın yapısı geçsin. |
+| **76-100** | Banda hâkim, üstüne hazır | Bir üst seviyenin içeriğini **düzenli** ver; seviye atlama sınavını öner, `levelSuggestion` düşün. |
+
+**İçerik seçiminde somut karşılığı:** aynı "B1" iki kişide farklı şey demek.
+B1-30'a altyazılı bir sitcom bölümü, B1-85'e altyazısız bir polisiye bölümü.
+Aynı şarkıyı ikisine de verebilirsin ama biriyle sözün **konusunu**, ötekiyle
+söyleyenin **tutumunu** konuşursun.
+
+### `levelScoreSuggestion` — her senkronda güncelle
+
+Sınav (`levelExam`) bir **başlangıç ölçümüdür**; asıl kaynak günlük performans.
+
+- **Tek seferde 8 puandan fazla oynatma.** Bir iyi gün 40'ı 70 yapmaz.
+- 3-4 günlük veri birikmeden dokunma.
+- Hangi beceride ilerlediğine bak (`levelExam.skills`, `wordProgress`,
+  sohbet dökümü); tek bir görevden puan çıkarma.
+- 90'ı geçtiyse artık seviye atlatmayı düşün — puanı 100'de tutmak yerine
+  `levelSuggestion` ile bir üst bandı öner ve puanı yeni bandın alt ucuna
+  (20-30) çek.
+
+### `levelExam` — seviye içi puanlama sınavı geldiyse
+
+`outbox.levelExam` doluysa kullanıcı o seviyeye özel 12 soruluk sınavı yeni
+yapmış demektir:
+
+```json
+{ "level": "B1", "date": "...", "score": 62,
+  "skills": [{ "skill": "vocabulary", "score": 75, "total": 4 }],
+  "weakest": "writing",
+  "responses": [{ "questionId": "xb1w1", "skill": "writing",
+                  "prompt": "...", "answer": "...", "via": "mic" }] }
+```
+
+- `skills` içindeki **kelime, gramer, dinleme** puanları kesindir (şıklı /
+  boşluk doldurma) — onlara güven.
+- **`writing` ve `speaking` puanı kabadır.** Uygulama yalnızca uzunluğa, istenen
+  kelimelerin kullanılıp kullanılmadığına ve yerel hata kontrolüne bakabildi.
+  `responses` içindeki ham cevapları **oku** ve `levelScoreSuggestion` ile
+  puanı düzelt. Bu senin işin; uygulama zaten "asıl yargı öğretmenin" diye
+  yazıyor ekranda.
+- Zayıf beceriyi `focus` ve `plan.advice` içine taşı.
+
 ## 1.5 Seviye — her şeyin ölçüsü ⚠️ **önce burayı oku**
 
 Bu paketteki **her şey** `profile.level`'a göre ayarlanır: görevin boyu,
