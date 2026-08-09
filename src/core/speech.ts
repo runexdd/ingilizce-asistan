@@ -62,7 +62,12 @@ async function bestVoice(): Promise<string | undefined> {
       cached = null;
       return undefined;
     }
-    const best = [...english].sort((a, b) => rankVoice(b) - rankVoice(a))[0];
+    // Anlaşılır bulunan sesleri öncele; yoksa puanlamaya düş
+    const allowed = english.filter((v) =>
+      /samantha|daniel|karen/i.test(v.name ?? v.identifier ?? '')
+    );
+    const pool = allowed.length > 0 ? allowed : english;
+    const best = [...pool].sort((a, b) => rankVoice(b) - rankVoice(a))[0];
     cached = best?.identifier ?? null;
   } catch {
     // Ses listesi alınamadıysa varsayılanla devam et
@@ -122,12 +127,33 @@ export interface VoiceOption {
   recommended: boolean;
 }
 
-/** Ayarlar ekranındaki ses seçici için: cihazdaki İngilizce sesler, iyiden kötüye. */
+/**
+ * Kullanılabilir bulunan sesler.
+ *
+ * Cihazda onlarca ses var ama çoğu sıkıştırılmış ve anlaşılmıyor. Kullanıcı
+ * teker teker dinleyip bu üçünün dışındakilerin kullanılamaz olduğunu tespit
+ * etti. Listeyi bunlarla sınırlıyoruz — uzun ve çoğu bozuk bir liste,
+ * seçim yapmayı kolaylaştırmıyor, zorlaştırıyor.
+ */
+const ALLOWED = /samantha|daniel|karen/i;
+
+/** Ayarlar ekranındaki ses seçici için: sadece anlaşılır bulunan sesler. */
 export async function listEnglishVoices(): Promise<VoiceOption[]> {
   try {
     const voices = await Speech.getAvailableVoicesAsync();
-    const list = voices
-      .filter((v) => (v.language ?? '').toLowerCase().startsWith('en'))
+    const english = voices.filter((v) =>
+      (v.language ?? '').toLowerCase().startsWith('en')
+    );
+
+    // Önce beyaz listeye uyanlar; hiçbiri yoksa cihazda başka ses vardır diye
+    // en iyi puanlı üçünü göster (liste boş kalmasın)
+    const allowed = english.filter((v) => ALLOWED.test(v.name ?? v.identifier ?? ''));
+    const source =
+      allowed.length > 0
+        ? allowed
+        : [...english].sort((a, b) => rankVoice(b) - rankVoice(a)).slice(0, 3);
+
+    const list = source
       .map((v) => ({
         id: v.identifier ?? v.name ?? '',
         name: v.name ?? v.identifier ?? '?',
