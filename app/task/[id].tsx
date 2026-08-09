@@ -187,6 +187,7 @@ function ReadingTask() {
             text={lessonPassage.text}
             glossary={lesson?.glossary ?? []}
             knownWords={data.cards.map((c) => c.word)}
+            level={data.profile.level}
             onAddCard={(word, meaning) =>
               update((current) => addCard(current, word, meaning))
             }

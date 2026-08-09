@@ -37,6 +37,8 @@ interface Props {
   glossary: GlossaryEntry[];
   onAddCard?: (word: string, meaning: string) => void;
   knownWords?: string[];
+  /** Kullanıcının CEFR seviyesi — örnek cümleler buna göre süzülür */
+  level?: string;
 }
 
 interface Box {
@@ -50,7 +52,13 @@ const POPUP_WIDTH = 290;
 const POPUP_MAX_HEIGHT = 300;
 const GAP = 8;
 
-export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Props) {
+export function TappableText({
+  text,
+  glossary,
+  onAddCard,
+  knownWords = [],
+  level,
+}: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   /** Vurgulanan kelime aralığı — kalıp seçilirse kalıbın tamamı sarıya döner */
   const [span, setSpan] = useState<[number, number] | null>(null);
@@ -176,11 +184,11 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
       setLoading(true);
 
       const sentence = sentences[words[wi]?.sentence ?? -1];
-      const found = await lookupWord(word, { entry: match?.entry, sentence });
+      const found = await lookupWord(word, { entry: match?.entry, sentence, level });
       setResult(found);
       setLoading(false);
     },
-    [findEntry, sentences, words]
+    [findEntry, sentences, words, level]
   );
 
   function close() {
@@ -296,7 +304,18 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
                 showsVerticalScrollIndicator={false}
               >
                 {result.meaning ? (
-                  <Text style={styles.meaning}>{result.meaning}</Text>
+                  <>
+                    {/* Anlamın nereden geldiği dürüstçe yazılır: cümleye
+                        bakılarak mı seçildi, yoksa genel karşılık mı */}
+                    <Text style={styles.meaningLabel}>
+                      {result.source === 'glossary'
+                        ? 'Bu metinde'
+                        : result.fromContext
+                          ? 'Bu cümlede'
+                          : 'Genel anlamı'}
+                    </Text>
+                    <Text style={styles.meaning}>{result.meaning}</Text>
+                  </>
                 ) : (
                   <Text style={styles.notFound}>
                     Türkçe karşılığı bulunamadı — yanlış bir karşılık göstermektense
@@ -449,10 +468,17 @@ const styles = StyleSheet.create({
   },
   loadingText: { fontSize: 13, color: colors.muted },
 
+  meaningLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: spacing.xs,
+  },
   meaning: {
     fontSize: 16,
     color: colors.accent,
-    marginTop: spacing.xs,
     lineHeight: 22,
     fontWeight: '600',
   },

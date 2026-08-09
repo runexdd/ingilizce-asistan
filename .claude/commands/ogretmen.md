@@ -177,6 +177,32 @@ ve `examples` de ekle:
 - **`examples`** — 2-3 kısa cümle. Kelime **`meaning`'deki anlamda** kullanılmış
   olmalı; başka anlamda örnek vermek en sık yapılan hatadır.
 
+#### Örnekler kullanıcının seviyesine göre yazılır ⚠️
+
+Kullanıcı bunu açıkça istedi: *"öğretmen kişisel asistan olduğundan herkesin
+kişisine göre ayarlama yapması lazım — A1'de 'hello' diyen adama ona göre örnek
+getirmesi lazım."* Sözlükten kopyalanmış edebî cümle öğretmez, yıldırır.
+
+`outbox.profile.level` neyse örnek ona göre yazılır:
+
+| Seviye | Örnek cümle nasıl olmalı | "notice" için örnek |
+|---|---|---|
+| **A1** | 4-8 kelime, tek yapı, present simple | *I notice small things.* |
+| **A2** | 6-10 kelime, past simple / going to | *I didn't notice the time.* |
+| **B1** | 8-14 kelime, present perfect, bağlaçlı | *I hadn't noticed the mistake until she pointed it out.* |
+| **B2** | 12-18 kelime, soyut bağlam, deyimsel kullanım | *Nobody seemed to notice how tense the meeting had become.* |
+
+Kurallar:
+- **Örnekteki diğer kelimeler de seviyeye uygun olsun.** Hedef kelimeyi
+  öğretirken cümleye üç yeni bilinmeyen kelime koymak, öğretmeyi engeller.
+- **Kullanıcının hayatından örnek ver.** Finans sektöründe çalışıyor, hafta içi
+  yoğun, hafta sonu boş, ABD'de Work&Travel yapmış. Örnekler ofis, sabah
+  rutini, yemek, yolculuk gibi onun gerçekten kullanacağı bağlamlarda olsun —
+  ders kitabı cümlesi değil.
+- **Günün temasına bağla.** Tema "alışkanlık"sa örnekler de o dünyadan olsun;
+  aynı kelimeyi aynı temada birden çok görmek kalıcılığı artırır.
+- Seviye yükseldikçe örnekleri de bir tık zorlaştır — sabit kalmasın.
+
 **Kalıpları tek parça yaz.** `word` alanı çok kelimeli olabilir ve olmalı:
 `"every evening"`, `"end up"`, `"be worth it"`, `"on time"`. Uygulama kalıbı
 tanır; kalıbın herhangi bir kelimesine dokunulduğunda kalıbın anlamını gösterir.

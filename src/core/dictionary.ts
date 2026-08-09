@@ -5,34 +5,57 @@
  * koyduklarına değil. Okurken takıldığın kelime, öğretmenin zor sandığı
  * kelime olmak zorunda değil.
  *
- * ⛔ **MyMemory kullanılmayacak.** Eskiden çeviri için MyMemory çağrılıyordu;
- * o bir sözlük değil, "çeviri hafızası" — insanların çevirdiği cümle
- * parçalarını saklar. Tek kelime sorulduğunda alakasız bir parçadan kalma
- * karşılık dönebiliyor ("evening" → "yapınız" gibi). Yanlış anlam, hiç anlam
- * vermemekten kötüdür; bu yüzden tamamen çıkarıldı. Geri ekleme.
+ * ⛔ **MyMemory kullanılmayacak.** Sözlük değil, "çeviri hafızası" — tek kelime
+ * sorulduğunda alakasız karşılık dönüyordu ("evening" → "yapınız"). Kaldırıldı,
+ * geri ekleme.
  *
- * Sıra:
- *   1. Öğretmenin sözlüğü  — anında, çevrimdışı, bağlamı bilen tek kaynak
- *   2. Yerel önbellek      — daha önce bakılan kelimeler, çevrimdışı
- *   3. Google sözlük ucu   — Türkçe karşılık + kelimenin diğer yaygın anlamları
- *   4. dictionaryapi.dev   — İngilizce tanım, eş anlamlı, örnek cümle
+ * ## Bağlam problemi — bu dosyanın asıl işi
  *
- * Bağlam: kelimenin tek başına çevirisi yanıltır ("evening" → "akşam" doğru ama
- * "every evening" → "her akşam" görülmeden anlaşılmaz). Bu yüzden kelimenin
- * geçtiği **cümlenin tamamı da çevrilip** panelde gösteriliyor. Kullanıcı
- * kelimeyi yerinde görür, tahmin etmek zorunda kalmaz.
+ * Tek kelime çevirisi düzensiz fiillerde çöküyor. Google'a tek başına sorunca:
  *
- * Hepsi ücretsiz ve anahtarsızdır — projenin $0 kısıtı gereği.
+ *     saw   → "testere"    (gördü değil)
+ *     felt  → "keçe"       (hissetti değil)
+ *     tried → "sınanmış"   (denedi değil)
+ *     left  → "sol"        (ayrıldı değil)
+ *
+ * Çünkü Google yazılışı aynı olan **başka kelimeyi** veriyor. Çözüm üç adım:
+ *
+ *   1. Kelimeyi hem **yazıldığı hâliyle** hem **sözlük hâliyle** sor
+ *      (saw + see). Sözlük hâli için ek kuralları ve düzensiz fiil tablosunu
+ *      kullan (`irregular.ts`).
+ *   2. Kelimenin geçtiği **cümlenin tamamını** çevir.
+ *   3. Çıkan bütün Türkçe adayları cümlenin çevirisiyle karşılaştır. Cümlede
+ *      hangi aday geçiyorsa bağlamdaki anlam odur.
+ *
+ * Böylece "He left the office" → *ayrılmak*, "his left hand" → *sol* çıkıyor;
+ * aynı kelime, iki farklı doğru cevap. Eşleşme bulunamazsa uydurulmaz:
+ * fiil çekimiyse sözlük hâlinin anlamı, değilse genel çeviri gösterilir ve
+ * cümlenin çevirisi zaten panelde durur.
+ *
+ * Kaynakların hepsi ücretsiz ve anahtarsızdır — projenin $0 kısıtı gereği.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GlossaryEntry } from '../db/types';
+import {
+  altBaseForm,
+  baseFormOf,
+  dedupe,
+  filterExamples,
+  matchCase,
+  otherMeaningsOf,
+  pickByContext,
+  pickDefault,
+  type Candidate,
+} from './wordsense';
 
-/** v1 önbelleği sadece düz metin tutuyordu ve MyMemory'nin hatalı
- *  karşılıklarını içeriyor — bilerek yeni anahtar kullanılıyor ki eski
- *  yanlışlar taşınmasın. */
-const CACHE_KEY = 'ingilizce-asistan/dict-cache-v2';
-const LEGACY_CACHE_KEY = 'ingilizce-asistan/dict-cache';
+/** v1 önbelleği MyMemory'nin hatalı karşılıklarını içeriyordu; v2 aday
+ *  listesi tutmadığı için bağlam eşleştirmesi yapamıyordu. */
+const CACHE_KEY = 'ingilizce-asistan/dict-cache-v3';
+const OLD_CACHE_KEYS = [
+  'ingilizce-asistan/dict-cache',
+  'ingilizce-asistan/dict-cache-v2',
+];
 /** Önbellek sınırı — sonsuz büyümesin */
 const MAX_ENTRIES = 2000;
 
@@ -44,26 +67,32 @@ export interface LookupResult {
   /** Bu bağlamdaki anlamı */
   meaning: string | null;
   source: LookupSource;
-  /** Kelimenin diğer yaygın anlamları — bağlamdaki hariç */
+  /** Anlam cümleye bakılarak mı seçildi — panelde dürüstçe belirtilir */
+  fromContext?: boolean;
+  /** Kelimenin diğer yaygın anlamları — gösterilen anlam hariç */
   otherMeanings?: string[];
   /** Yaygın bir eş anlamlısı */
   synonym?: string;
-  /** Örnek cümleler */
+  /** Seviyeye uygun örnek cümleler */
   examples?: string[];
   /** İngilizce tanım (ek bağlam) */
   definition?: string;
-  /** Çekimli hâlin sözlük hâli: "ended" → "end" */
+  /** Çekimli hâlin sözlük hâli: "saw" → "see" */
   baseForm?: string;
-  /** Kelimenin geçtiği cümlenin Türkçe çevirisi — bağlamı gösterir */
+  /** Kelimenin geçtiği cümlenin Türkçe çevirisi */
   sentenceTr?: string;
   /** Çok kelimeli kalıp eşleştiyse kalıbın kendisi: "every evening" */
   phrase?: string;
 }
 
 interface CachedEntry {
+  /** Bağlam eşleşmezse gösterilecek varsayılan anlam */
   meaning: string | null;
-  otherMeanings?: string[];
+  /** "term|pos|fromLemma" biçiminde adaylar — bağlam eşleştirmesi bunun üstünde
+   *  çalışır, bu yüzden seçilen anlam değil aday listesi saklanır */
+  candidates?: string[];
   synonym?: string;
+  /** Seviyeye göre süzülmeden önceki hâlleri; süzme okurken yapılır */
   examples?: string[];
   definition?: string;
   baseForm?: string;
@@ -72,8 +101,7 @@ interface CachedEntry {
 let memoryCache: Record<string, CachedEntry> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Cümle çevirileri oturum boyunca akılda tutulur; diske yazılmaz
- *  (cümle metne özeldir, kalıcı önbellekte yer kaplamasının anlamı yok). */
+/** Cümle çevirileri oturum boyunca akılda tutulur; diske yazılmaz. */
 const sentenceCache = new Map<string, string>();
 
 export function normalizeWord(raw: string): string {
@@ -93,8 +121,10 @@ async function loadCache(): Promise<Record<string, CachedEntry>> {
   } catch {
     memoryCache = {};
   }
-  // Eski, güvenilmez önbellek bir kez temizlenir
-  void AsyncStorage.removeItem(LEGACY_CACHE_KEY).catch(() => {});
+  // Eski, güvenilmez önbellekler bir kez temizlenir
+  for (const key of OLD_CACHE_KEYS) {
+    void AsyncStorage.removeItem(key).catch(() => {});
+  }
   return memoryCache;
 }
 
@@ -116,7 +146,6 @@ function scheduleSave() {
 
 const GTX = 'https://translate.googleapis.com/translate_a/single';
 
-/** İngilizce sözcük türü etiketlerini Türkçeleştirir. */
 const POS_TR: Record<string, string> = {
   noun: 'isim',
   verb: 'fiil',
@@ -132,11 +161,7 @@ const POS_TR: Record<string, string> = {
 
 interface GtxResponse {
   sentences?: Array<{ trans?: string }>;
-  dict?: Array<{
-    pos?: string;
-    terms?: string[];
-    base_form?: string;
-  }>;
+  dict?: Array<{ pos?: string; terms?: string[]; base_form?: string }>;
 }
 
 async function gtx(text: string, dt: string): Promise<GtxResponse | null> {
@@ -158,41 +183,27 @@ function joinTrans(json: GtxResponse): string {
 }
 
 /**
- * Tek kelime araması.
- * `dt=bd` sözlük bloğunu getirir: kelimenin sözcük türüne göre gruplanmış,
- * **kullanım sıklığına göre sıralı** Türkçe karşılıkları. İstenen "farklı ama
- * yaygın anlamlar" listesi buradan geliyor — sıralı olduğu için baştan 3 tane
- * almak, eskimiş anlamları kendiliğinden dışarıda bırakıyor.
+ * Tek kelimenin bütün Türkçe karşılık adayları.
+ * `dt=bd` sözlük bloğunu getirir: sözcük türüne göre gruplanmış ve
+ * **kullanım sıklığına göre sıralı** karşılıklar. Sıralı olduğu için baştan
+ * birkaç tane almak, eskimiş anlamları kendiliğinden eler.
  */
-async function translateWord(
-  word: string
-): Promise<{ meaning: string; others: string[]; baseForm?: string } | null> {
+async function wordCandidates(word: string, fromLemma: boolean): Promise<Candidate[]> {
   const json = await gtx(word, 'dt=t&dt=bd');
-  if (!json) return null;
+  if (!json) return [];
 
-  const senses: string[] = [];
-  let baseForm: string | undefined;
-
+  const out: Candidate[] = [];
+  const plain = joinTrans(json);
+  if (plain && plain.toLowerCase() !== word.toLowerCase()) {
+    out.push({ term: plain, fromLemma });
+  }
   for (const group of json.dict ?? []) {
-    if (!baseForm && group.base_form) baseForm = group.base_form;
-    const pos = group.pos ? (POS_TR[group.pos] ?? group.pos) : '';
-    for (const term of (group.terms ?? []).slice(0, 3)) {
-      const label = pos ? `${term} (${pos})` : term;
-      if (!senses.some((s) => s.split(' (')[0] === term)) senses.push(label);
+    const pos = group.pos ? (POS_TR[group.pos] ?? group.pos) : undefined;
+    for (const term of (group.terms ?? []).slice(0, 4)) {
+      out.push({ term, pos, fromLemma });
     }
   }
-
-  const plain = joinTrans(json);
-  const usable = plain && plain.toLowerCase() !== word.toLowerCase() ? plain : '';
-
-  const meaning = usable || senses[0]?.split(' (')[0] || '';
-  if (!meaning) return null;
-
-  const others = senses
-    .filter((s) => s.split(' (')[0].toLowerCase() !== meaning.toLowerCase())
-    .slice(0, 5);
-
-  return { meaning, others, baseForm: baseForm?.toLowerCase() };
+  return out;
 }
 
 /** Cümlenin tamamını çevirir — kelimeyi yerinde görmek için. */
@@ -220,35 +231,6 @@ interface DictApiEntry {
   }>;
 }
 
-/**
- * Çekimli hâlden sözlük hâline giden makul adaylar.
- * dictionaryapi.dev "ended" veya "stories" için 404 döner; sözlük hâli
- * denenmezse kelime "bulunamadı" görünür.
- */
-function lemmaCandidates(word: string): string[] {
-  const out: string[] = [];
-  const add = (w: string) => {
-    if (w.length > 1 && w !== word && !out.includes(w)) out.push(w);
-  };
-
-  if (/ies$/.test(word)) add(word.slice(0, -3) + 'y');
-  if (/(ches|shes|sses|xes|zes|oes)$/.test(word)) add(word.slice(0, -2));
-  if (/s$/.test(word) && !/ss$/.test(word)) add(word.slice(0, -1));
-  if (/ied$/.test(word)) add(word.slice(0, -3) + 'y');
-  if (/ed$/.test(word)) {
-    add(word.slice(0, -1)); // liked → like
-    add(word.slice(0, -2)); // ended → end
-    if (/([bdgklmnprt])\1ed$/.test(word)) add(word.slice(0, -3)); // stopped → stop
-  }
-  if (/ing$/.test(word)) {
-    add(word.slice(0, -3)); // reading → read
-    add(word.slice(0, -3) + 'e'); // taking → take
-    if (/([bdgklmnprt])\1ing$/.test(word)) add(word.slice(0, -4)); // running → run
-  }
-  if (/(er|est)$/.test(word)) add(word.replace(/(er|est)$/, ''));
-  return out.slice(0, 3);
-}
-
 async function fetchDefinition(word: string): Promise<DictApiEntry[] | null> {
   try {
     const res = await fetch(
@@ -264,9 +246,16 @@ async function fetchDefinition(word: string): Promise<DictApiEntry[] | null> {
 
 /**
  * İngilizce tanım + eş anlamlı + örnek cümleler.
- * Örnekler gerçek sözlük örnekleridir; uydurma değil.
+ *
+ * ⚠️ Sadece **ilk girdi** kullanılır. dictionaryapi.dev aynı yazılışa sahip
+ * farklı kelimeleri ayrı girdiler hâlinde döndürüyor: "evening" için hem
+ * *akşam* hem de *even* fiilinin çekimi geliyor. Hepsi birleştirilince
+ * "evening" örneği diye "We need to even this playing field" çıkıyordu.
  */
-async function defineOnline(word: string): Promise<{
+async function defineOnline(
+  word: string,
+  lemma?: string
+): Promise<{
   definition?: string;
   synonym?: string;
   examples: string[];
@@ -275,26 +264,12 @@ async function defineOnline(word: string): Promise<{
   let data = await fetchDefinition(word);
   let matched = word;
 
-  if (!data) {
-    for (const candidate of lemmaCandidates(word)) {
-      data = await fetchDefinition(candidate);
-      if (data) {
-        matched = candidate;
-        break;
-      }
-    }
+  if (!data && lemma) {
+    data = await fetchDefinition(lemma);
+    if (data) matched = lemma;
   }
   if (!data) return null;
 
-  /**
-   * ⚠️ Sadece **ilk girdi** kullanılır.
-   *
-   * dictionaryapi.dev aynı yazılışa sahip farklı kelimeleri ayrı girdiler
-   * hâlinde döndürüyor: "evening" için hem *akşam* (isim) hem de *even*
-   * fiilinin çekimi geliyor. Hepsi birleştirilince "evening" örneği diye
-   * "We need to even this playing field" gösteriliyordu — kelimeyle alakasız.
-   * Girdileri karıştırma.
-   */
   const meanings = data[0]?.meanings ?? [];
   const first = meanings[0];
   const def = first?.definitions?.[0]?.definition;
@@ -303,16 +278,13 @@ async function defineOnline(word: string): Promise<{
   for (const m of meanings) {
     for (const d of m.definitions ?? []) {
       if (d.example && !examples.includes(d.example)) examples.push(d.example);
-      if (examples.length >= 3) break;
+      if (examples.length >= 6) break;
     }
-    if (examples.length >= 3) break;
+    if (examples.length >= 6) break;
   }
 
-  /**
-   * Eş anlamlının ilki alınır. Liste sıklığa göre sıralı; sondakiler
-   * ("undern" gibi) artık kullanılmayan kelimeler oluyor — kullanıcı
-   * eskimiş eş anlamlıları istemedi.
-   */
+  /** Eş anlamlının ilki alınır; liste sıklığa göre sıralı, sondakiler
+   *  ("undern" gibi) artık kullanılmayan kelimeler oluyor. */
   const synonym = (first?.synonyms ?? []).find(
     (s) => /^[a-zA-Z-]{2,}$/.test(s) && s.toLowerCase() !== word.toLowerCase()
   );
@@ -334,8 +306,22 @@ async function defineOnline(word: string): Promise<{
 interface LookupOptions {
   /** Öğretmenin sözlüğündeki karşılık — varsa her zaman kazanır */
   entry?: GlossaryEntry | null;
-  /** Kelimenin geçtiği cümle — bağlam çevirisi için */
+  /** Kelimenin geçtiği cümle — bağlam eşleştirmesi bunun üstünden yapılır */
   sentence?: string;
+  /** Kullanıcının CEFR seviyesi — örnek cümleleri buna göre süzülür */
+  level?: string;
+}
+
+function encodeCandidates(cands: Candidate[]): string[] {
+  return cands.map((c) => `${c.term}|${c.pos ?? ''}|${c.fromLemma ? '1' : ''}`);
+}
+
+function decodeCandidates(raw: string[] | undefined): Candidate[] {
+  if (!raw) return [];
+  return raw.map((line) => {
+    const [term, pos, fromLemma] = line.split('|');
+    return { term, pos: pos || undefined, fromLemma: fromLemma === '1' };
+  });
 }
 
 /**
@@ -343,7 +329,7 @@ interface LookupOptions {
  *
  * Anlamın kaynağı sırayla: öğretmen sözlüğü → önbellek → internet.
  * Öğretmen sözlüğü varsa anlam ondan gelir; internet sadece **ek bilgiyi**
- * (diğer anlamlar, örnekler) doldurur, anlamın üstüne yazmaz.
+ * doldurur, anlamın üstüne yazmaz.
  */
 export async function lookupWord(
   raw: string,
@@ -352,7 +338,8 @@ export async function lookupWord(
   const word = normalizeWord(raw);
   if (!word) return { word: raw, meaning: null, source: 'none' };
 
-  const { entry, sentence } = options;
+  const { entry, sentence, level } = options;
+  const lemma = baseFormOf(word);
 
   // Cümle çevirisi her durumda paralel istenir — bağlamı o gösteriyor
   const sentencePromise =
@@ -362,105 +349,118 @@ export async function lookupWord(
 
   /* 1. Öğretmenin sözlüğü — bağlamı bilen tek kaynak */
   if (entry?.meaning) {
-    const extra = await enrich(word, {
-      wantMeaning: false,
-      wantSenses: !entry.senses?.length,
-      wantExamples: !entry.examples?.length,
-    });
+    const needsExtra = !entry.senses?.length || !entry.examples?.length;
+    const extra = needsExtra ? await defineOnline(word, lemma) : null;
 
     return {
       word: entry.word,
       phrase: entry.word.includes(' ') ? entry.word : undefined,
       meaning: entry.meaning,
       source: 'glossary',
-      otherMeanings: entry.senses?.length ? entry.senses : extra?.otherMeanings,
+      otherMeanings: entry.senses?.length ? entry.senses : undefined,
       synonym: entry.synonym ?? extra?.synonym,
-      examples: entry.examples?.length ? entry.examples : extra?.examples,
+      examples: entry.examples?.length
+        ? entry.examples.slice(0, 3)
+        : filterExamples(extra?.examples, word, lemma, level),
       definition: extra?.definition,
-      baseForm: extra?.baseForm,
       sentenceTr: (await sentencePromise) ?? undefined,
     };
   }
 
-  /* 2. Önbellek */
+  /* 2. Önbellek — adaylar saklandığı için bağlam eşleştirmesi burada da çalışır */
   const cache = await loadCache();
   const cached = cache[word];
   if (cached) {
-    return {
+    const sentenceTr = await sentencePromise;
+    return buildResult({
       word,
-      meaning: cached.meaning,
-      source: 'cache',
-      otherMeanings: cached.otherMeanings,
+      candidates: decodeCandidates(cached.candidates),
+      fallback: cached.meaning,
+      lemma,
+      sentenceTr,
       synonym: cached.synonym,
-      examples: cached.examples,
+      examples: filterExamples(cached.examples, word, lemma, level),
       definition: cached.definition,
       baseForm: cached.baseForm,
-      sentenceTr: (await sentencePromise) ?? undefined,
-    };
+      source: 'cache',
+    });
   }
 
-  /* 3. İnternet */
-  const found = await enrich(word, {
-    wantMeaning: true,
-    wantSenses: true,
-    wantExamples: true,
-  });
-  const sentenceTr = (await sentencePromise) ?? undefined;
+  /* 3. İnternet — yazılan hâl, sözlük hâli ve tanım aynı anda istenir */
+  const [surfaceCands, lemmaCands, altCands, defined, sentenceTr] = await Promise.all([
+    wordCandidates(word, false),
+    lemma ? wordCandidates(lemma, true) : Promise.resolve([]),
+    (() => {
+      const alt = altBaseForm(word);
+      return alt && alt !== lemma ? wordCandidates(alt, true) : Promise.resolve([]);
+    })(),
+    defineOnline(word, lemma),
+    sentencePromise,
+  ]);
 
-  if (!found || (!found.meaning && !found.definition)) {
-    return { word, meaning: null, source: 'none', sentenceTr };
+  const candidates = dedupe([...surfaceCands, ...lemmaCands, ...altCands]);
+
+  if (candidates.length === 0 && !defined) {
+    return { word, meaning: null, source: 'none', sentenceTr: sentenceTr ?? undefined };
   }
+
+  const fallback = pickDefault(candidates, !!lemma)?.term ?? null;
 
   cache[word] = {
-    meaning: found.meaning ?? null,
-    otherMeanings: found.otherMeanings,
-    synonym: found.synonym,
-    examples: found.examples,
-    definition: found.definition,
-    baseForm: found.baseForm,
+    meaning: fallback,
+    candidates: encodeCandidates(candidates),
+    synonym: defined?.synonym,
+    examples: defined?.examples,
+    definition: defined?.definition,
+    baseForm: lemma ?? defined?.baseForm,
   };
   scheduleSave();
 
-  return {
+  return buildResult({
     word,
-    meaning: found.meaning ?? null,
-    source: 'online',
-    otherMeanings: found.otherMeanings,
-    synonym: found.synonym,
-    examples: found.examples,
-    definition: found.definition,
-    baseForm: found.baseForm,
+    candidates,
+    fallback,
+    lemma,
     sentenceTr,
-  };
+    synonym: defined?.synonym,
+    examples: filterExamples(defined?.examples, word, lemma, level),
+    definition: defined?.definition,
+    baseForm: lemma ?? defined?.baseForm,
+    source: 'online',
+  });
 }
 
-/** İki ücretsiz kaynağı paralel sorup tek sonuçta birleştirir. */
-async function enrich(
-  word: string,
-  want: { wantMeaning: boolean; wantSenses: boolean; wantExamples: boolean }
-): Promise<{
-  meaning?: string;
-  otherMeanings?: string[];
+/** Adaylardan bağlama uygun olanı seçip sonucu kurar. */
+function buildResult(input: {
+  word: string;
+  candidates: Candidate[];
+  fallback: string | null;
+  lemma?: string;
+  sentenceTr: string | null;
   synonym?: string;
   examples?: string[];
   definition?: string;
   baseForm?: string;
-} | null> {
-  const needsGoogle = want.wantMeaning || want.wantSenses;
-  const [translated, defined] = await Promise.all([
-    needsGoogle ? translateWord(word) : Promise.resolve(null),
-    defineOnline(word),
-  ]);
-
-  if (!translated && !defined) return null;
+  source: LookupSource;
+}): LookupResult {
+  const contextual = pickByContext(input.candidates, input.sentenceTr);
+  const chosen =
+    contextual?.term ??
+    input.fallback ??
+    pickDefault(input.candidates, !!input.lemma)?.term ??
+    null;
 
   return {
-    meaning: translated?.meaning,
-    otherMeanings: translated?.others.length ? translated.others : undefined,
-    synonym: defined?.synonym,
-    examples: defined?.examples.length ? defined.examples : undefined,
-    definition: defined?.definition,
-    baseForm: translated?.baseForm ?? defined?.baseForm,
+    word: input.word,
+    meaning: chosen ? matchCase(chosen, input.word) : null,
+    source: input.source,
+    fromContext: !!contextual,
+    otherMeanings: otherMeaningsOf(input.candidates, chosen),
+    synonym: input.synonym,
+    examples: input.examples,
+    definition: input.definition,
+    baseForm: input.baseForm,
+    sentenceTr: input.sentenceTr ?? undefined,
   };
 }
 
