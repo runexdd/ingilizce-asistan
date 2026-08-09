@@ -46,7 +46,6 @@ export function getStudyQueue(
   dailyNewWords: number,
   today: Date = new Date()
 ): Card[] {
-  const due = getDueCards(data, today);
   const todayISO = toISODate(today);
   const lessonWords = new Set(
     data.lesson?.date === todayISO
@@ -55,6 +54,23 @@ export function getStudyQueue(
   );
 
   const isTodays = (card: Card) => lessonWords.has(card.word.trim().toLowerCase());
+
+  /**
+   * Seviyenin iki band üstündeki kelimeler kuyruğa **hiç girmez.**
+   *
+   * ⚠️ Bu süzgeç en başta, `due` üzerinde uygulanmalı. Önce sadece *yeni*
+   * kartlar süzülüyordu ve hata devam etti: kullanıcının destesindeki B2
+   * kalıpları çoktan bir kez cevaplanmıştı, yani "yeni" değil "tekrar"
+   * sayılıyorlardı — tekrarlar ise süzgeci hiç görmüyordu. Kullanıcı
+   * güncellemeden sonra bile *"to be worth it"* görmeye devam etti.
+   *
+   * Kart silinmiyor: seviye yükselince kendiliğinden geri gelir. Bugünün ders
+   * kelimeleri ise her hâlükârda geçer — öğretmen bilerek koymuştur, son söz
+   * onundur.
+   */
+  const due = getDueCards(data, today).filter(
+    (c) => isTodays(c) || !isTooHardFor(c.word, data.profile.level)
+  );
 
   /**
    * Kota **bugün tanıştırılan** kelimeler üzerinden sayılır.
@@ -78,22 +94,8 @@ export function getStudyQueue(
   ).length;
   const quota = Math.max(0, dailyNewWords - introducedTodayTotal);
 
-  /**
-   * Seviyenin iki band üstündeki kelimeler sıranın arkasına atılır.
-   *
-   * Kullanıcı A2'yken kartlara "to be worth it", "to come up with" gibi B2
-   * kalıpları düşmüştü: *"a2 biri bunu bilemez"*. Kartlar silinmiyor — belki
-   * öğretmen bilerek koymuştur, belki kullanıcı okurken kendi eklemiştir — ama
-   * günün kotasını onlar yemesin, seviyeye uygun kelimeler öne geçsin.
-   */
-  const tooHard = (card: Card) => isTooHardFor(card.word, data.profile.level);
-
   const fresh = untouched
-    .sort(
-      (a, b) =>
-        Number(tooHard(a)) - Number(tooHard(b)) ||
-        Number(isTodays(b)) - Number(isTodays(a))
-    )
+    .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
     .slice(0, quota);
 
   // Önceki günlerden gelen, tekrarı bugüne düşmüş kartlar

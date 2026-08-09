@@ -15,6 +15,7 @@ import {
   describeWritingSize,
   specOf,
 } from '../../src/core/level';
+import { speakingPromptFor, writingPromptFor } from '../../src/core/prompts';
 import { pickPassage, type ReadingPassage } from '../../src/core/reading';
 import { speakEnglish, stopSpeaking } from '../../src/core/speech';
 import {
@@ -77,11 +78,18 @@ function WritingTask({ long }: { long: boolean }) {
   const [minSentences, maxSentences] = spec.writingSentences;
   const fallbackSentences = long ? maxSentences + 2 : minSentences;
 
+  /**
+   * Yedek görev seviyeye göre ve **her gün değişerek** gelir (`prompts.ts`).
+   * Önce tek bir sabit cümle vardı; hem her gün aynıydı hem A1 ile C1'e aynı
+   * şeyi soruyordu.
+   */
   const prompt =
     suggested?.prompt ??
-    (long
-      ? `Tell the story of one thing that happened to you this week. Write at least ${fallbackSentences} sentences.`
-      : `Write ${minSentences}-${maxSentences} sentences about what you did today.`);
+    `${writingPromptFor(level)} ${
+      long
+        ? `Write at least ${fallbackSentences} sentences.`
+        : `Write ${minSentences}-${maxSentences} sentences.`
+    }`;
 
   const todayWords = useTodayWords();
 
@@ -477,7 +485,7 @@ function SpeakingTask() {
   const suggested = data.suggestedTasks.find((t) => t.kind === 'speaking');
   const prompt =
     suggested?.prompt ??
-    `Talk for about ${spec.speakingSeconds} seconds: What did you do today, and what was the hardest part?`;
+    `Talk for about ${spec.speakingSeconds} seconds. ${speakingPromptFor(level)}`;
 
   const todayWords = useTodayWords();
 

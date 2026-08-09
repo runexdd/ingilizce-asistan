@@ -209,6 +209,18 @@ Emin olamadığın, havuzda da bulunmayan kelime için ölçüt: *cümle içinde
 kullanımı bir kural gerektiriyor mu?* Phrasal verb, deyim ve soyut kavramlar
 neredeyse her zaman B1+'tır. Emin değilsen **önerme.**
 
+### ⚠️ Tür dağılımını gözet — hepsi fiil olmasın
+
+Kullanıcının ikinci şikâyeti: *"bir sürü fiil eklemişsin, kelime-fiil kısmını
+oransal dağıt."* Beş kelimenin beşi de fiilse o gün cümle kurulamaz; beşi de
+isimse de kurulamaz. Günün setinde kabaca:
+
+**~%35 isim · ~%35 fiil · ~%20 sıfat · ~%10 zarf/kalıp**
+
+Beş kelimelik bir günde bu şu demek: 2 isim, 2 fiil, 1 sıfat — ya da yakını.
+Tek bir türden üçten fazlası olmasın. Uygulama kendi seçtiğinde bu oranı
+`wordbank.ts` içindeki `MIX` ile zorluyor; sen seçerken elle gözet.
+
 **Kaç kelime:** `plan.dailyNewWords` kadar (yoksa 5). Bu sayıya sen karar
 veriyorsun — aşağıdaki "Plan" bölümüne bak. Günde 20 kelime kimse tutamaz.
 
