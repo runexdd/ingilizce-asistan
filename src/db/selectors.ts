@@ -159,9 +159,28 @@ export function getTodayWordProgress(
   });
 }
 
+/**
+ * Bugün çalışılacak kart sayısı.
+ *
+ * Kuyrukla **aynı süzgeci** kullanır: seviyesinin çok üstündeki kelimeler
+ * kuyruğa girmiyorsa burada da sayılmamalı. Aksi hâlde ana ekran "12 kartın
+ * tekrarı geldi" derken kart ekranı "5 kart kaldı" diyor ve kullanıcı hangi
+ * sayının doğru olduğunu bilemiyor.
+ */
 export function getDueCardCount(data: AppData, today: Date = new Date()): number {
   const iso = toISODate(today);
-  return data.cards.reduce((n, c) => (c.dueDate <= iso ? n + 1 : n), 0);
+  const lessonWords = new Set(
+    data.lesson?.date === iso
+      ? data.lesson.targetWords.map((w) => w.word.trim().toLowerCase())
+      : []
+  );
+
+  return data.cards.reduce((n, c) => {
+    if (c.dueDate > iso) return n;
+    const isTodays = lessonWords.has(c.word.trim().toLowerCase());
+    if (!isTodays && isTooHardFor(c.word, data.profile.level)) return n;
+    return n + 1;
+  }, 0);
 }
 
 /** En sık tekrarlanan hata kategorileri — görev üretiminin girdisi. */
