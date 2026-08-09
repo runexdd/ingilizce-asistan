@@ -512,7 +512,7 @@ function SpeakingTask() {
     setMicError(null);
     setInterim('');
     setRecording(true);
-    micRef.current = startSpeechInput({
+    const handle = startSpeechInput({
       onFinal: (chunk) => {
         if (!chunk) return;
         setText((current) => (current ? `${current.trim()} ${chunk}` : chunk));
@@ -526,6 +526,9 @@ function SpeakingTask() {
         micRef.current = null;
       },
     });
+    // Motor hiç açılamadıysa düğme "kayıtta" görünmesin
+    if (!handle) setRecording(false);
+    micRef.current = handle;
   }
 
   // Ekrandan çıkarken mikrofon açık kalmasın

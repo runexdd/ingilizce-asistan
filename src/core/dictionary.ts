@@ -284,6 +284,16 @@ async function defineOnline(word: string): Promise<DefGroup[] | null> {
   const groups: DefGroup[] = [];
   for (const meaning of data.flatMap((entry) => entry.meanings ?? [])) {
     const definition = meaning.definitions?.[0]?.definition;
+
+    /**
+     * Eskimiş anlamlar atlanır. Kullanıcı bunu açıkça istemedi:
+     * *"çok eskilerden kalan şu an konuşulmayan eş anlamından bahsetmiyorum."*
+     * "worth" için sözlükte hâlâ *to be, become, betide* fiili duruyor ve
+     * örneği "Well worth thee, me friend" — bugün kimsenin kurmayacağı cümle.
+     */
+    if (definition && /\b(archaic|obsolete|dated|poetic|no longer)\b/i.test(definition)) {
+      continue;
+    }
     const examples: string[] = [];
     for (const d of meaning.definitions ?? []) {
       if (d.example && !examples.includes(d.example)) examples.push(d.example);
@@ -432,22 +442,28 @@ export async function lookupWord(
      * Sebebi canlı testte görüldü: metinde "felt" = *hissetti* iken sözlük
      * servisi "felt"i kumaş (keçe) sanıyordu.
      *
-     * Örnek cümle ise ayrı bir mesele. Öğretmen yazdıysa o kullanılır — en
-     * iyisi odur. Yazmadıysa boş bırakmak da doğru değil ("worth" kelimesine
-     * bakıp hiç örnek görmemek gibi); o zaman:
-     *   1. sözlükten **sözcük türü eşleşen** örnekler denenir (kalıplarda
-     *      denenmez, servis kalıbı tanımıyor),
-     *   2. o da yoksa metnin kendi cümlesi örnek olarak gösterilir — kelime
-     *      orada tam aradığımız anlamda ve kullanıcının seviyesinde geçiyor.
+     * Örnek cümlede sıra şu:
+     *   1. **Öğretmenin yazdığı** — kişiye özel, en iyisi.
+     *   2. **Metnin kendi cümlesi** — kelime orada tam öğretmenin verdiği
+     *      anlamda ve kullanıcının seviyesinde geçiyor, yani garanti doğru.
+     *   3. Sözlük — sadece ilk ikisi yoksa.
+     *
+     * Sözlüğün sona alınmasının sebebi canlı testte görüldü: öğretmen
+     * "worth" için *buna değmek* demişti, sözlük ise kelimenin artık
+     * kullanılmayan fiil anlamını bulup *"Well worth thee, me friend"*
+     * örneğini verdi. Öğretmen anlamı söylediyse, o anlamda kullanıldığını
+     * bildiğimiz tek cümle metindekidir.
      */
-    let examples = teacherExamples;
+    let examples = teacherExamples ?? passageExample(sentence);
     let exampleSource: LookupResult['exampleSource'] = teacherExamples
       ? 'teacher'
-      : undefined;
+      : examples
+        ? 'passage'
+        : undefined;
     let synonym = entry.synonym;
     let definition: string | undefined;
 
-    if (!teacherExamples && !isPhrase) {
+    if (!examples && !isPhrase) {
       const online = await gatherOnline(word, lemma);
       if (online) {
         const sentenceTr = await sentencePromise;
@@ -468,11 +484,6 @@ export async function lookupWord(
         synonym = synonym ?? def?.synonym;
         definition = def?.definition;
       }
-    }
-
-    if (!examples) {
-      examples = passageExample(sentence);
-      if (examples) exampleSource = 'passage';
     }
 
     return {

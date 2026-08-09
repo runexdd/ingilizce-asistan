@@ -185,6 +185,8 @@ export function filterExamples(
     const words = ex.trim().split(/\s+/);
     if (words.length > limit) return false;
     if (/[;:]|\.\.\./.test(ex)) return false;
+    // Eski İngilizce örnekleri ele — "Well worth thee, me friend" gibi
+    if (/\b(thee|thou|thy|thine|hath|doth|ye|o'er|'tis|unto)\b/i.test(ex)) return false;
     // Örnek gerçekten bu kelimeyi içermeli — başka kelimenin örneği sızmasın
     const lower = ex.toLowerCase();
     return stems.some((s) => lower.includes(s));
