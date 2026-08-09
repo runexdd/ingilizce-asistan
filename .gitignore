@@ -36,6 +36,9 @@ yarn-error.*
 # köprü jetonu — ASLA depoya girmemeli
 sync-token.txt
 
+# nobetci betiginin son islenen paket damgasi (yerel durum)
+.watch-state.json
+
 # typescript
 *.tsbuildinfo
 

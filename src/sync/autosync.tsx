@@ -49,6 +49,16 @@ import { buildOutbox, pullInbox, pushOutbox } from './github';
 const DEBOUNCE_MS = 4000;
 /** Aynı paketi üst üste göndermemek için asgari ara */
 const MIN_INTERVAL_MS = 20000;
+/**
+ * Uygulama açıkken düzenli çekme aralığı.
+ *
+ * Bilgisayardaki nöbetçi (`scripts/watch.mjs`) öğretmeni kendi çalıştırıyor ve
+ * cevabı gist'e bırakıyor. Sadece "uygulamaya geri dönünce" çekmek yetmiyordu:
+ * kullanıcı ekranda beklerken cevap gelse bile görmüyordu, uygulamadan çıkıp
+ * girmesi gerekiyordu. 90 saniye, öğretmenin bir turu bitirmesine yakın bir
+ * süre ve saatte 40 istek eder — GitHub'ın 5000 sınırının çok altında.
+ */
+const POLL_MS = 90000;
 
 /**
  * Gönderilmeye değer ne var — kısa bir parmak izi.
@@ -157,10 +167,16 @@ export function AutoSync() {
 
     pull();
 
+    // Uygulama açıkken de düzenli bak: öğretmenin cevabı beklerken gelsin
+    const poll = setInterval(pull, POLL_MS);
+
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') pull();
     });
-    return () => subscription.remove();
+    return () => {
+      clearInterval(poll);
+      subscription.remove();
+    };
   }, [connected, update]);
 
   /* --- 2. değişiklikten sonra gönder --- */

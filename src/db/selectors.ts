@@ -98,10 +98,7 @@ export function getStudyQueue(
    * yenisi çekilmemeli: günün bütçesi doldu demektir. Aksi hâlde beş kelime
    * bitirilir bitirilmez yeni beş kelime geliyordu.
    */
-  const introducedTodayTotal = data.cards.filter(
-    (c) => c.introducedAt === todayISO
-  ).length;
-  const quota = Math.max(0, dailyNewWords - introducedTodayTotal);
+  const quota = Math.max(0, dailyNewWords - countIntroducedToday(data, today));
 
   const fresh = untouched
     .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
@@ -189,6 +186,34 @@ export function getTodayWordProgress(
  * kullanıyor ve `mutations.ts` de `github.ts`'ten tip alıyor — orada dursaydı
  * çalışma anında döngüsel bağımlılık olurdu.
  */
+/**
+ * Bugünün **yeni kelime bütçesinden** kaç tanesi harcanmış.
+ *
+ * ⚠️ `getStudyQueue` ve `seedDailyWords` bunu **ortak** kullanmalı. Üçüncü kez
+ * aynı tuzağa düşüldü: tohumlama seviye değişimini hesaba katıp yeni kelimeleri
+ * ekliyordu, kuyruk ise katmıyordu — bugün 13 kelime çalışmış biri B1'e
+ * geçtiğinde kelimeler destede beliriyor ama kotayı eski seviyenin sayısı
+ * doldurduğu için ekranda hiç görünmüyorlardı.
+ *
+ * Seviye değişiminden **önce** çalışılan kartlar yeni seviyenin bütçesini
+ * yemez: elle seviye değiştirmek "bana verilen yanlıştı" demektir, gün
+ * baştan başlar.
+ */
+export function countIntroducedToday(
+  data: AppData,
+  today: Date = new Date()
+): number {
+  const iso = toISODate(today);
+  const changed = data.profile.levelChangedAt;
+  const stale = isContentStale(data);
+
+  return data.cards.filter((c) => {
+    if (c.introducedAt !== iso) return false;
+    if (!stale || !changed) return true;
+    return (c.lastAnsweredAt ?? c.introducedAt) >= changed;
+  }).length;
+}
+
 export function isContentStale(data: AppData): boolean {
   const changed = data.profile.levelChangedAt;
   if (!changed) return false;

@@ -3,7 +3,7 @@ import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import { isTooHardFor, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
-import { isContentStale } from './selectors';
+import { countIntroducedToday, isContentStale } from './selectors';
 import type {
   AppData,
   ConversationMessage,
@@ -198,13 +198,8 @@ export function seedDailyWords(
       }
     : data;
 
-  const changedAt = base.profile.levelChangedAt;
-  const introducedToday = base.cards.filter((c) => {
-    if (c.introducedAt !== iso) return false;
-    if (!stale || !changedAt) return true;
-    // Seviye değişiminden ÖNCE cevaplanmışsa yeni seviyenin bütçesinden yemez
-    return (c.lastAnsweredAt ?? c.introducedAt) >= changedAt;
-  }).length;
+  // Kuyrukla **ortak** sayaç — ikisi ayrı sayarsa kelime eklenir ama görünmez
+  const introducedToday = countIntroducedToday(base, today);
 
   /**
    * Sırada bekleyen kartlar sayılırken **seviyenin çok üstündekiler sayılmaz.**
