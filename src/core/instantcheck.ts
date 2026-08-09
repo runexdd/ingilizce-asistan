@@ -194,7 +194,8 @@ const PATTERNS: Pattern[] = [
     severity: 'hint',
   },
   {
-    test: /\bdo\s+a\s+mistake\b/i,
+    // "did a mistake", "do mistakes", "does a mistake" — hepsi aynı hata
+    test: /\b(do|does|did|doing|done)\s+(a|an|the|some|many|any)?\s*mistakes?\b/i,
     kind: 'collocation',
     message: 'Hata "yapılırken" **make** kullanılır: **"make a mistake"**.',
   },
@@ -237,13 +238,20 @@ function tokens(text: string): string[] {
 
 /**
  * Kelimenin kökü — hedef kelime denetiminde çekimli hâli de sayılsın diye.
- * Kaba ama bu iş için yeterli: "noticed" → "notic", "watching" → "watch".
+ *
+ * Sondaki `e` de atılıyor, yoksa **"notice"** ile **"noticed"** eşleşmiyordu:
+ * `notice` olduğu gibi kalırken `noticed` → `notic` oluyor ve kullanıcı kelimeyi
+ * kullandığı hâlde "kullanmadın" uyarısı alıyordu.
+ *
+ * Kaba bir kök alma; yanlış eşleşme riski var ama bu denetim `hint`
+ * seviyesinde — yanlış negatif, yanlış pozitiften iyidir.
  */
 function stem(word: string): string {
   return word
     .toLowerCase()
+    .replace(/^to\s+/, '')
     .replace(/(ing|ed|es|s)$/, '')
-    .replace(/^to\s+/, '');
+    .replace(/e$/, '');
 }
 
 export interface InstantCheckOptions {
@@ -340,10 +348,13 @@ export function checkInstant(
     }
   }
 
-  /* --- 8. aynı kelime iki kez üst üste ("the the") --- */
+  /* --- 8. aynı kelime iki kez üst üste ("the the", "I I") ---
+     `had had` ve `that that` İngilizcede geçerli olabildiği için elenir;
+     gerisi (tek harfli "I" dahil) daktilo hatasıdır. */
   const tok = tokens(trimmed);
+  const legitDouble = new Set(['had', 'that']);
   for (let i = 1; i < tok.length; i++) {
-    if (tok[i] === tok[i - 1] && tok[i].length > 1) {
+    if (tok[i] === tok[i - 1] && !legitDouble.has(tok[i])) {
       notes.push({
         kind: 'spelling',
         severity: 'sure',

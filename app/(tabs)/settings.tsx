@@ -24,6 +24,7 @@ import {
 } from '../../src/core/speech';
 import {
   applyInbox,
+  markConversationsSynced,
   markTasksSynced,
   setSync,
   updateProfile,
@@ -59,6 +60,8 @@ export default function SettingsScreen() {
 
   const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [tokenInput, setTokenInput] = useState('');
+  /** Yazarken her harfte veriye yazmamak için yerel kopya; odak çıkınca kaydedilir */
+  const [interests, setInterests] = useState(profile.interests ?? '');
 
   // Cihazdaki sesleri bir kez yükle; kaydedilmiş tercihi motora bildir
   useEffect(() => {
@@ -131,8 +134,10 @@ export default function SettingsScreen() {
     }
 
     const sentIds = outbox.pendingTasks.map((t) => t.id);
+    const sentConversations = outbox.conversations.map((c) => c.id);
     update((current) => {
       let next = markTasksSynced(current, sentIds);
+      next = markConversationsSynced(next, sentConversations);
       next = setSync(next, { lastPushAt: new Date().toISOString() });
       if (pulled.inbox) next = applyInbox(next, pulled.inbox);
       return next;
@@ -236,6 +241,35 @@ export default function SettingsScreen() {
               ? (SKILL_TR[profile.weakestSkill] ??
                 SKILL_LABELS[profile.weakestSkill as QuestionSkill])
               : 'Henüz yok'}
+          </Text>
+        </View>
+      </View>
+
+      {/* ------------------------------------------------------ zevkler
+          Öğretmen dizi/film/müzik önerisini ve günün sohbet konusunu buradan
+          seçiyor. Boş bırakılırsa öneriler herkese uyan, kimsenin açmadığı
+          genel içeriğe düşer — o yüzden ekranda niye önemli olduğu yazıyor. */}
+      <Text style={styles.groupTitle}>Zevklerim</Text>
+      <View style={styles.group}>
+        <View style={styles.connectBox}>
+          <Text style={styles.hint}>
+            Ne dinlersin, ne izlersin? Öğretmen günlük dizi/şarkı önerisini ve
+            üstüne konuşulacak sohbeti buna göre seçiyor. Serbest yaz, virgülle
+            ayır.
+          </Text>
+          <TextInput
+            style={[styles.input, { minHeight: 72 }]}
+            value={interests}
+            onChangeText={setInterests}
+            onBlur={() =>
+              update((c) => updateProfile(c, { interests: interests.trim() }))
+            }
+            placeholder="rock, metal, Metallica, süper kahraman dizileri, bilim kurgu, futbol"
+            placeholderTextColor={colors.muted}
+            multiline
+          />
+          <Text style={styles.hint}>
+            Bir sonraki senkronda öğretmene gider.
           </Text>
         </View>
       </View>

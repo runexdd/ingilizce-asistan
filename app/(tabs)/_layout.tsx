@@ -26,6 +26,10 @@ export default function TabsLayout() {
         options={{ title: 'Kartlar', tabBarIcon: tabIcon('🗂️') }}
       />
       <Tabs.Screen
+        name="teacher"
+        options={{ title: 'Öğretmen', tabBarIcon: tabIcon('👨‍🏫') }}
+      />
+      <Tabs.Screen
         name="progress"
         options={{ title: 'İlerleme', tabBarIcon: tabIcon('📈') }}
       />

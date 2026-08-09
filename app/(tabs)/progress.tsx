@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { estimateTarget, targetTrend } from '../../src/core/progress';
 import { useStore } from '../../src/db/store';
 import {
   getRecentSessions,
@@ -16,6 +17,18 @@ export default function ProgressScreen() {
   const stats = useMemo(() => getStats(data), [data]);
   const errors = useMemo(() => getTopErrorCategories(data, 5), [data]);
   const week = useMemo(() => getRecentSessions(data, 7), [data]);
+
+  /* Hedef tahmini ve gidişatı. Kaydı Öğretmen ekranı tutuyor; burası sadece
+     gösteriyor — aynı kaydı iki ekranın birden yazması karışıklık yaratır. */
+  const history = data.targetHistory ?? [];
+  const estimate = useMemo(
+    () => estimateTarget(data, new Date(), history.at(-1)?.daysRemaining),
+    [data, history]
+  );
+  const trend = useMemo(
+    () => (estimate ? targetTrend(history, estimate.daysRemaining) : null),
+    [history, estimate]
+  );
 
   const maxMinutes = Math.max(1, ...week.map((d) => d.minutes));
 
@@ -38,6 +51,60 @@ export default function ProgressScreen() {
           </View>
         ))}
       </View>
+
+      {/* --------------------------------------------------- hedef eğrisi
+          Kullanıcının istediği grafik: "şu günde B1 olursun, sen şu an A2sin."
+          Çubuklar kalan gün sayısıdır — **aşağı inmesi iyidir**, o yüzden
+          altında ne anlama geldiği yazıyor. */}
+      {trend && estimate ? (
+        <>
+          <Text style={styles.sectionTitle}>
+            {data.profile.level} → {estimate.level} · {estimate.daysRemaining} gün
+          </Text>
+          <View style={styles.box}>
+            {trend.points.length >= 2 ? (
+              <View style={styles.chart}>
+                {trend.points.slice(-14).map((p) => {
+                  const max = Math.max(
+                    1,
+                    ...trend.points.slice(-14).map((x) => x.daysRemaining)
+                  );
+                  const height = Math.round((p.daysRemaining / max) * 80);
+                  return (
+                    <View key={p.date} style={styles.barColumn}>
+                      <View
+                        style={[
+                          styles.bar,
+                          { height: Math.max(3, height), backgroundColor: colors.weekend },
+                        ]}
+                      />
+                      <Text style={styles.barLabel}>{p.date.slice(8)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+            <Text
+              style={[
+                styles.trend,
+                trend.delta < 0 && { color: colors.success },
+                trend.delta > 0 && { color: '#D92D20' },
+              ]}
+            >
+              {trend.label}
+            </Text>
+            <Text style={styles.chartNote}>
+              Çubuk = hedefe kalan gün; kısalması iyi. Sayıyı öğretmen belirler:
+              çalıştıkça kalan saati düşürür, ara verince artırır. Tek seferde
+              %25'ten fazla oynayamaz — bir iyi hafta "iki ay erken bitiyorsun"
+              demek değildir.
+            </Text>
+            {data.plan?.targetReason ? (
+              <Text style={styles.reason}>{data.plan.targetReason}</Text>
+            ) : null}
+          </View>
+        </>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Son 7 gün</Text>
       <View style={styles.box}>
@@ -156,4 +223,16 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   errorCount: { fontSize: 15, fontWeight: '700', color: colors.accent },
+  trend: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.muted,
+    marginTop: spacing.md,
+  },
+  reason: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 21,
+    marginTop: spacing.sm,
+  },
 });

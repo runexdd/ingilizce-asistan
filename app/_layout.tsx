@@ -20,6 +20,10 @@ export default function RootLayout() {
           name="feedback"
           options={{ title: 'Düzeltmeler', presentation: 'modal' }}
         />
+        <Stack.Screen
+          name="conversation"
+          options={{ title: 'Günün sohbeti', presentation: 'modal' }}
+        />
       </Stack>
     </StoreProvider>
   );

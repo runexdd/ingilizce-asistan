@@ -3,7 +3,16 @@ import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import { isTooHardFor, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
-import type { AppData, Feedback, Profile, SyncState, TaskRecord } from './types';
+import type {
+  AppData,
+  ConversationMessage,
+  ConversationRecord,
+  Feedback,
+  Profile,
+  SyncState,
+  TargetPoint,
+  TaskRecord,
+} from './types';
 
 /**
  * Değişiklikler. Hepsi saf fonksiyon: mevcut veriyi almaz-değiştirmez,
@@ -322,6 +331,160 @@ export function markFeedbackSeen(data: AppData): AppData {
   };
 }
 
+/* -------------------------------------------------------------- içerik */
+
+/**
+ * İçerik önerisini tamamlandı olarak işaretler.
+ *
+ * İki yere yazılır: `content` içindeki öğeye (ekranda tik görünsün) ve kalıcı
+ * `contentDone` günlüğüne (öğretmen diziyi kaldığı bölümden sürdürebilsin —
+ * `content` her senkronda üzerine yazılıyor).
+ */
+export function markContentDone(
+  data: AppData,
+  title: string,
+  today: Date = new Date()
+): AppData {
+  const iso = toISODate(today);
+  const item = data.content.find((c) => c.title === title);
+  if (!item || item.done) return data;
+
+  return {
+    ...data,
+    content: data.content.map((c) =>
+      c.title === title ? { ...c, done: true, doneAt: iso } : c
+    ),
+    contentDone: [
+      ...(data.contentDone ?? []).filter((d) => d.title !== title),
+      { type: item.type, title: item.title, date: iso },
+    ],
+  };
+}
+
+/* ------------------------------------------------------- günün sohbeti */
+
+/**
+ * Sohbeti başlatır — öğretmenin ilk repliğiyle birlikte kayıt açar.
+ *
+ * Aynı gün ikinci kez başlatılırsa var olan kayda döner; sohbet yarıda
+ * kalmışsa kullanıcı kaldığı yerden devam etsin diye.
+ */
+export function startConversation(
+  data: AppData,
+  today: Date = new Date()
+): AppData {
+  const plan = data.conversationPlan;
+  if (!plan) return data;
+
+  /**
+   * Günde tek sohbet. Bitmiş sohbet için yenisi açılmaz — kullanıcı ekranı
+   * tekrar açtığında konuşmasını okur. Yarım kalmışsa kaldığı yerden devam
+   * eder; her açılışta yeni kayıt açmak günün verisini ikiye böler.
+   */
+  const iso = toISODate(today);
+  if (data.conversations.some((c) => c.date === iso)) return data;
+
+  const record: ConversationRecord = {
+    id: newId('conv'),
+    date: iso,
+    topic: plan.topic,
+    messages: [
+      {
+        role: 'teacher',
+        text: plan.turns[0]?.say ?? plan.closing,
+        at: new Date().toISOString(),
+      },
+    ],
+    turnsDone: 0,
+    turnsTotal: plan.turns.length,
+    spokenTurns: 0,
+    finished: false,
+    syncState: 'pending',
+  };
+
+  return { ...data, conversations: [...data.conversations, record] };
+}
+
+export function addConversationMessage(
+  data: AppData,
+  conversationId: string,
+  message: ConversationMessage,
+  turnsDone?: number
+): AppData {
+  return {
+    ...data,
+    conversations: data.conversations.map((c) =>
+      c.id === conversationId
+        ? {
+            ...c,
+            messages: [...c.messages, message],
+            turnsDone: turnsDone ?? c.turnsDone,
+            spokenTurns:
+              message.role === 'user' && message.via === 'mic'
+                ? c.spokenTurns + 1
+                : c.spokenTurns,
+          }
+        : c
+    ),
+  };
+}
+
+/**
+ * Sohbeti bitirir.
+ *
+ * Bitiş kararı öğretmenindir (senaryonun son turu). Kullanıcı erken çıkarsa
+ * kayıt `finished: false` kalır ve yine de öğretmene gider — yarım bırakılan
+ * sohbet de bir veridir.
+ */
+export function finishConversation(
+  data: AppData,
+  conversationId: string
+): AppData {
+  return {
+    ...data,
+    conversations: data.conversations.map((c) =>
+      c.id === conversationId ? { ...c, finished: true } : c
+    ),
+  };
+}
+
+export function markConversationsSynced(
+  data: AppData,
+  ids: string[]
+): AppData {
+  const set = new Set(ids);
+  return {
+    ...data,
+    conversations: data.conversations.map((c) =>
+      set.has(c.id) ? { ...c, syncState: 'synced' as const } : c
+    ),
+  };
+}
+
+/* --------------------------------------------------------- hedef geçmişi */
+
+/**
+ * Bugünkü hedef tahminini geçmişe işler.
+ *
+ * Günde tek kayıt: aynı gün tekrar çağrılırsa üzerine yazar. Böylece
+ * "dün 80'di, bugün 78" karşılaştırması gerçekten günler arası olur.
+ */
+export function recordTargetPoint(
+  data: AppData,
+  point: TargetPoint
+): AppData {
+  const history = data.targetHistory ?? [];
+  const existing = history.find((p) => p.date === point.date);
+  if (existing && existing.daysRemaining === point.daysRemaining) return data;
+
+  return {
+    ...data,
+    targetHistory: [...history.filter((p) => p.date !== point.date), point].sort(
+      (a, b) => (a.date < b.date ? -1 : 1)
+    ),
+  };
+}
+
 /* ------------------------------------------------------------------ köprü */
 
 export function setSync(data: AppData, patch: Partial<SyncState>): AppData {
@@ -392,13 +555,45 @@ export function applyInbox(
     }
   }
 
+  /**
+   * Öğretmenin sohbet değerlendirmeleri kayda işlenir.
+   *
+   * Sohbet yapıldığı gün uygulama yalnızca yazım/noktalama uyarısı verebiliyor
+   * (canlı yapay zekâ yok). Asıl düzeltme burada geliyor: kullanıcı sohbeti
+   * açtığında öğretmenin cümle cümle düzeltmelerini görüyor.
+   */
+  let conversations = next.conversations;
+  for (const item of inbox.conversationReviews ?? []) {
+    conversations = conversations.map((c) =>
+      c.id === item.conversationId ? { ...c, review: item.review } : c
+    );
+  }
+
+  /**
+   * İçerik önerileri yenilenirken **tamamlananlar korunur.**
+   * Öğretmen aynı diziyi/şarkıyı tekrar gönderdiyse (çok bölümlü içerik)
+   * kullanıcının "izledim" işareti silinmemeli.
+   */
+  const doneTitles = new Set((next.contentDone ?? []).map((d) => d.title));
+  const content = (inbox.content ?? next.content).map((c) =>
+    doneTitles.has(c.title)
+      ? {
+          ...c,
+          done: true,
+          doneAt: (next.contentDone ?? []).find((d) => d.title === c.title)?.date,
+        }
+      : c
+  );
+
   return {
     ...next,
     suggestedTasks: inbox.nextTasks ?? next.suggestedTasks,
-    content: inbox.content ?? next.content,
+    content,
     weeklyReport: inbox.weeklyReport ?? next.weeklyReport,
     plan: inbox.plan ?? next.plan,
     lesson: inbox.lesson ?? next.lesson,
+    conversationPlan: inbox.conversation ?? next.conversationPlan,
+    conversations,
     scores,
     sync: { ...next.sync, lastPullAt: new Date().toISOString() },
   };

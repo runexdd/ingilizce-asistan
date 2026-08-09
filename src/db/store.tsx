@@ -78,6 +78,9 @@ export function createInitialData(today: Date = new Date()): AppData {
     suggestedTasks: [],
     content: [],
     scores: [],
+    contentDone: [],
+    conversations: [],
+    targetHistory: [],
   };
 }
 
@@ -113,6 +116,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               suggestedTasks: parsed.suggestedTasks ?? [],
               content: parsed.content ?? [],
               scores: parsed.scores ?? [],
+              contentDone: parsed.contentDone ?? [],
+              conversations: parsed.conversations ?? [],
+              targetHistory: parsed.targetHistory ?? [],
             };
           }
         }

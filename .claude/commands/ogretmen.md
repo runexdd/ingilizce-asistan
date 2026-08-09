@@ -25,12 +25,16 @@ Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 ## 1. Gelen paketi oku
 
 `outbox.json` içinde şunlar var:
-- `profile` — seviye, hedefler, zayıf alan, günlük dakika
+- `profile` — seviye, hedefler, zayıf alan, günlük dakika, **`interests`** (zevkleri)
 - `pendingTasks[]` — düzeltilmeyi bekleyen yazılar
 - `recentErrors[]` — daha önce tespit edilmiş, tekrar eden hatalar
 - `knownWords[]` — zaten kartta olan kelimeler
 - `stats` — kart sayısı, seri
 - `wordProgress[]` — **bir önceki günün kelimelerinin kart durumu**
+- `conversations[]` — **dünkü sohbetin dökümü** (§5.8'de değerlendireceksin)
+- `contentLog[]` — hangi bölümü izledi, hangi şarkıyı dinledi (tamamlananlar)
+- `contentPending[]` — önerilip henüz yapılmamış içerikler
+- `targetHistory[]` — hedef tarihinin son 14 günü
 
 `pendingTasks` boşsa düzeltme üretme; sadece sıradaki görevleri ve içeriği üret.
 
@@ -491,19 +495,186 @@ içeriğin **yarısından fazlasını** ilk seferde anlayabilmeli. A2'ye altyaz�
 haber bülteni, B2'ye çocuk şarkısı önerme. Öneriyi yazarken kendine sor:
 *"Bu kişi bunu açtığında 30 saniyede pes eder mi?"*
 
-`{ type, title, ref, segment, instruction, skill }`
+### ⚠️ Öneri kişiye göredir — `profile.interests`
+
+Kullanıcının kuralı: *"kişinin zevkine göre; rock/metal seviyorsun, git
+Metallica Lux Æterna dinle; sen A2'sin, git The Flash 1. sezon 1. bölüm izle."*
+
+`profile.interests` serbest metindir ("rock, metal, süper kahraman dizileri,
+bilim kurgu"). **Önce oraya bak.** Sevmediği türden içerik açılmaz; açılmayan
+içerik hiçbir şey öğretmez. `interests` boşsa `note` içinde bir cümleyle
+doldurmasını iste (Ayarlar → Zevklerim) ve o gün nötr bir şey öner.
+
+### Alan alan ne yazılır
+
+```json
+{ "type": "series", "title": "The Flash · 1. sezon 1. bölüm",
+  "segment": "0:00-20:00", "where": "Netflix",
+  "why": "Süper kahraman seviyorsun ve bu bölümün diyalogları A2 için ağır değil; bilim kurgu terimleri az.",
+  "instruction": "İngilizce altyazıyla izle. İlk 20 dakika yeter, hepsini bitirmek zorunda değilsin.",
+  "skill": "listening",
+  "words": [{ "word": "lightning", "meaning": "şimşek" }],
+  "watchFor": ["Barry kendini tanıtırken hangi zamanı kullanıyor?"] }
+```
+
+- **`why`** — tek cümle, Türkçe, **gerekçe**. "Bunu izle" değil, "bunu **niye
+  sana** verdim". Gerekçesiz öneri rastgele görünür ve açılmaz.
+- **`where`** — Netflix / YouTube / Spotify / Disney+. Nereden bulacağını
+  bilmediği şeyi aramaz.
+- **`words`** — içeriğe **girmeden önce** öğreneceği 4-6 kelime. Anlamadığı bir
+  bölümü izlemek dinleme değil, seyretmedir. Bu kelimeler **günün kelime
+  setiyle çakışsın** (§3.5) — gün tek tema, tek kelime seti.
+- **`watchFor`** — 2-3 madde, Türkçe: izlerken/dinlerken neye dikkat edecek.
+  Bunlar aynı zamanda akşamki sohbetin (§5.1) hazırlığıdır.
+- **`segment`** — bir oturuşta bitecek boyut. İş günü 15-20 dk, hafta sonu daha
+  uzun olabilir (`weekdayMinutes` / `weekendMinutes`).
+
+### `contentLog` — kaldığı yerden devam ettir ⚠️
+
+`outbox.contentLog` tamamladığı içerikleri tutar. **Aynı bölümü iki kez
+verme.** Dizi diziyse sıradaki bölümü ver: 1. bölümü bitirdiyse 2. bölüm.
+`contentPending` içindekiler henüz yapılmamıştır — üstüne yenisini yığma,
+tekrar gönder ya da neden yapmadığını `note` içinde sor.
+
+### Müzik önerisi
+
+`type: "song"` — `title` "Metallica — Lux Æterna", `where` "Spotify / YouTube".
+
+- **Şarkı sözünü paketе kopyalama.** Telif. Bunun yerine: 4-6 kelimelik/kalıplık
+  bir `words` listesi çıkar, `watchFor` içinde neye kulak vereceğini yaz, sohbet
+  turlarında şarkının **konusunu** konuştur.
+- Şarkı seçerken sözün anlaşılırlığına bak: çığlıkla söylenen bir parça
+  dinleme pratiği olmaz. Aynı gruptan daha net söylenen bir parça seç.
+- Seviye ölçütü burada da geçerli: sözlerin **yarısından fazlasını**
+  anlayabilmeli.
+
+### Diğer tipler
 
 - `type: "youtube"` → `ref` video kimliği (`dQw4w9WgXcQ` gibi), `segment` "2:10-7:30"
   - Seviyeye uygun, gerçekten var olduğundan emin olduğun videolar öner
-- `type: "series"` → `title` "The Flash S1E3", `segment` "12:00-20:00"
-  - `instruction`: izlemesini ve dönüp 5-6 cümleyle anlatmasını iste + anlamadığı 3 kelimeyi not etmesini
-- `type: "reading"` / `"song"` / `"podcast"` / `"task"` de kullanılabilir
+- `type: "reading"` / `"podcast"` de kullanılabilir
 - `type: "task"` → gerçek hayat görevi: *"Bugün içinden İngilizce düşün, akşam anlat"*
 
 `instruction` **Türkçe** olsun, ne yapacağı net olsun.
 
 Emin olmadığın bir bağlantı veya video kimliği **uydurma** — bunun yerine
 `type: "task"` ile arama tarifi ver: *"YouTube'da 'easy English podcast B1' ara, 10 dakika dinle"*.
+
+## 5.1 Günün sohbeti (`conversation`) — **her gün, ilgi alanı üstüne**
+
+Kullanıcının isteği: her gün öğretmenle, o günkü dizi/şarkı üstüne İngilizce
+konuşulsun; mikrofon isteyen kullansın, isteyen yazsın; yeterli konuşma olunca
+öğretmen bitirsin.
+
+### ⚠️ Önce mimariyi anla — yoksa yanlış şey yazarsın
+
+Telefondaki uygulama **canlı yapay zekâ çağırmıyor** (ek ücret yok kuralı).
+Yani sohbet anında üretilmiyor: **sen bir gün önceden yazıyorsun**, uygulama
+yürütüyor. Bu şu demek:
+
+- Turları **sırayla akacak** biçimde kur. Her tur bir öncekinin cevabını
+  varsaymalı ama ona bağımlı olmamalı: *"What happened in the first scene?"*
+  → sonraki tur *"Did you like the main character? Why?"*. Cevabın içeriğine
+  bağlı soru yazma ("Sen X dediysen…") — cevabı göremiyorsun.
+- Her tura bir **`followUp`** yaz. Kullanıcı iki kelimeyle geçiştirirse
+  uygulama bunu kullanır: *"Just a few more words — what did he actually do?"*
+- Konuyu **sen seçtiğin içerikten** al. Sohbet, o gün önerdiğin dizi
+  bölümünün/şarkının üstüne olsun; `contentTitle` alanına o içeriğin başlığını
+  yaz.
+
+### Yapı
+
+```json
+"conversation": {
+  "date": "YYYY-MM-DD",
+  "topic": "The Flash · 1. sezon 1. bölüm",
+  "contentTitle": "The Flash · 1. sezon 1. bölüm",
+  "intro": "Bugün izlediğin bölümü konuşacağız. Cevaplarını mikrofonla vermeye çalış; yazmak her zaman daha kolay, konuşmak seni asıl geliştiren.",
+  "targetWords": ["notice", "end up", "exhausted"],
+  "turns": [
+    { "say": "So, you watched the first episode. Tell me what happened.",
+      "hint": "Bölümü 3-4 cümleyle anlat. Geçmiş zaman kullan.",
+      "useWords": ["notice"],
+      "minWords": 20,
+      "followUp": "That's a bit short. What happened right after the storm?" }
+  ],
+  "closing": "Good work today. You used 'end up' correctly — that's a hard one.",
+  "closingNote": "Yarın aynı dizinin 2. bölümünü konuşacağız."
+}
+```
+
+### Kurallar
+
+1. **Tur sayısı 6-10.** Kullanıcının kuralı: *"öğretmen yeterli konuşmayı
+   yapınca bitirsin."* İş günü 6, hafta sonu 10. 20 turluk sohbet bitirilmez.
+2. **`say` alanı seviyeye uyar** (§1.5). A2'ye 18 kelimelik soru sorma. Soru
+   basit, cevap zor olsun — öğretilen şey cevaptır.
+3. **Açık uçlu sor.** "Did you like it?" tek kelimeyle geçilir; *"What did you
+   like about him?"* geçilmez. Evet/hayır sorusu sadece ısınma turunda.
+4. **`minWords`** — o turda beklenen en az kelime. Yazmazsan uygulama seviyeden
+   türetir (konuşma süresinin dörtte biri). İlk tur uzun, son turlar kısa olsun.
+5. **`useWords`** — turların en az yarısında günün kelimelerinden biri istensin.
+   Kelime ancak kullanılınca oturur; kart bunu yapamaz, sohbet yapar.
+6. **`hint` Türkçe** ve **ne yapacağını** söylesin, cevabı söylemesin.
+   İyi: *"Karakteri tarif et, üç sıfat kullan."* Kötü: *"He is brave and fast de."*
+7. **Zorluk yay.** İlk turlar anlatma (kolay), ortadakiler görüş (zor), son
+   turlar bağlama ("bu sana neyi hatırlattı?"). Hep aynı seviyede sorma.
+8. **`closing`** öğretmen gibi bitsin: somut bir şeyi öv, tek cümle. Boş övgü
+   yazma — kullanıcı bunu ekranda görecek.
+9. **Şarkı günlerinde** sohbet şarkının **konusu** üstüne olur: neyi anlatıyor,
+   sana ne hissettiriyor, hangi kelime dikkatini çekti. Sözü satır satır
+   çevirtme; bir-iki kısa alıntı üstünden konuşmak yeterli ve telif açısından
+   da doğru olan bu.
+
+### Sohbet yoksa
+
+Kullanıcı o gün içeriği izlememişse (`contentPending` doluysa) yine de sohbet
+yaz — ama konuyu **önceki** içerikten ya da günün temasından seç. Sohbetsiz gün
+olmasın; kullanıcı bunu her gün istedi.
+
+## 5.2 Dünkü sohbeti değerlendir (`conversationReviews`)
+
+`outbox.conversations[]` içinde dünkü sohbetin **dökümü** var:
+
+```
+{ "id": "conv_...", "topic": "...", "transcript": "ÖĞRETMEN: ...\nÖMER (mikrofon): ...",
+  "turnsDone": 7, "turnsTotal": 8, "finished": true, "spokenTurns": 5,
+  "instantNotes": ["Cümlenin sonuna nokta koy.", ...] }
+```
+
+Her sohbet için bir değerlendirme yaz:
+
+```json
+"conversationReviews": [
+  { "conversationId": "conv_...",
+    "review": {
+      "verdict": "Bölümü anlatırken past simple'ı baştan sona doğru kullandın — iki hafta önce burada takılıyordun.",
+      "praise": "'end up' kalıbını hiç zorlamadan, doğru yerde kullandın.",
+      "fluency": 62,
+      "corrections": [
+        { "original": "He run very fast and everyone was scared.",
+          "corrected": "He ran very fast, and everyone was scared.",
+          "natural": "He took off so fast that everyone froze.",
+          "note": "Geçmiş zamanda 'run' → 'ran'. Uzun cümleyi virgülle ayırdım." }
+      ] } }
+]
+```
+
+**Kurallar:**
+
+- **`instantNotes`'u tekrar etme.** Uygulama zaten yazım/noktalama uyardı.
+  Sen üsluba, kelime seçimine, doğallığa bak — makinenin göremediği yere.
+- **En fazla 5 düzeltme.** Her hatayı listelemek öğretmez, yıldırır. En çok
+  tekrar edeni ve en öğretici olanı seç.
+- **`natural`** en değerli alan: gramer doğru ama "çeviri kokan" cümleyi ana
+  dili İngilizce olan biri nasıl söylerdi.
+- **`praise`** uydurma. Övülecek somut bir şey yoksa alanı hiç koyma.
+- **`fluency` 0-100** — akıcılık. `spokenTurns` yüksekse (mikrofonla konuştuysa)
+  bu daha anlamlı bir ölçüdür; yazarak yaptıysa düşük tutma, sadece not düş.
+- Düzeltmelerdeki hataları **`recentErrors` kategorilerinden** say; aynı
+  kategoriler §2'deki sabit listeden gelir.
+- Sohbet yarım kalmışsa (`finished: false`) sebebini `note` içinde sor, ceza
+  verme; kısa bir sohbet hiç sohbet etmemekten iyidir.
 
 ## 5.5 Puanla ve planı güncelle — **karar verici sensin**
 
@@ -580,6 +751,52 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
 - **`note`** — Kullanıcıya tek cümlelik Türkçe not. Dürüst ol:
   aksatıyorsa söyle, ilerliyorsa abartmadan söyle.
 
+- **`advice`** — **Bugünün tavsiyesi.** `note` durumu bildirir, `advice` **ne
+  yapacağını** söyler. Kullanıcının isteği: *"her gün ödev gibi advice
+  verecek."* Tek şey olsun, somut olsun, bugün uygulanabilsin.
+  - İyi: *"Bugün konuşurken cümleyi kafanda bitirmeye çalışma; yarısını söyle,
+    gerisi gelir. Takılınca 'how can I say' de ve devam et."*
+  - Kötü: *"Daha çok pratik yap."* (herkese uyar, kimseyi değiştirmez)
+  - Tavsiye o günün verisinden çıksın: dün konuşmada takıldıysa konuşma
+    üstüne, kelimeler oturmadıysa tekrar üstüne olsun.
+
+### Hedef tarihi — gün sayısını **sen** oynatırsın ⚠️
+
+Kullanıcının tarifi birebir şu: *"çok çalışıyorsun, 80 günde B1 olacaksan artık
+78 güne düşürecek; tersi durumda, çalışmayana, uygulamaya girmeyene 82 olacak.
+Bu artış abartılmamalı."*
+
+Gün sayısını doğrudan yazmıyorsun; `remainingHours` × kullanıcının **gerçek
+temposu** = kalan gün. Uygulama bu çarpımı yapıyor ve ekranda "78 gün (önceki
+tahmin 80 gündü)" diye gösteriyor. Senin işin `remainingHours`'ı doğru
+oynatmak.
+
+`outbox.targetHistory` son 14 günün gün sayısını verir. **Oynatmadan önce oraya
+bak.**
+
+| Durum | Ne yap |
+|---|---|
+| Her gün girdi, görevleri tam yaptı, hata oranı düşüyor | `remainingHours`'ı **%2-4** kıs (80 günde ≈ 2 gün) |
+| Düzenli ama sıradan bir hafta | **dokunma** — hedef her gün oynarsa anlamını yitirir |
+| 1-2 gün kaçırdı | dokunma; tempo düşüşünü uygulama zaten hesaba katıyor |
+| 3+ gün girmedi | **%2-4 artır** + `note` içinde suçlamadan söyle |
+| Seviye atlama işareti var (yazıları belirgin iyileşti) | %10'a kadar kıs, ama `levelSuggestion` ile birlikte |
+
+**Sınırlar:**
+- **Günde 1-3 günden fazla oynatma.** Uygulama tek seferde %25 sıçramayı zaten
+  kesiyor, ama asıl fren sende olmalı. 80 → 60 demek güven kaybettirir.
+- `targetHistory`'de sayı **dün zaten kısaldıysa** bugün bir daha kısaltma —
+  üst üste iyi haber, iyi haberi değersizleştirir.
+- İlk 2-3 hafta veri azken hiç oynatma; referans (seviye başına ~150-200 saat)
+  yerinde kalsın.
+
+- **`targetReason`** — Oynattıysan **tek cümlelik Türkçe gerekçe**. Ekranda
+  gün sayısının hemen altında çıkıyor; sayının niye değiştiğini görmeyen
+  kullanıcı sayıya güvenmez.
+  - *"Beş gündür aksatmadan çalışıyorsun ve konuşma hataların azaldı; hedefi 2 gün öne aldım."*
+  - *"Dört gündür uygulamaya girilmedi; hedefi 2 gün geriye aldım."*
+  - Oynatmadıysan bu alanı **hiç koyma.**
+
 ### Aksatma durumu
 
 `measurements.daysSinceLastSession` 3'ten büyükse:
@@ -615,11 +832,24 @@ Motive edici ol ama abartma; gerçek ilerlemeyi göster.
   "content": [{ "type": "...", "title": "...", "ref": "...", "segment": "...",
                 "instruction": "...", "skill": "..." }],
   "weeklyReport": null,
+  "conversation": { "date": "YYYY-MM-DD", "topic": "...", "contentTitle": "...",
+                    "intro": "Türkçe giriş", "targetWords": ["..."],
+                    "turns": [{ "say": "...", "hint": "...", "useWords": ["..."],
+                                "minWords": 20, "followUp": "..." }],
+                    "closing": "...", "closingNote": "..." },
+  "conversationReviews": [
+    { "conversationId": "conv_...",
+      "review": { "verdict": "...", "praise": "...", "fluency": 60,
+                  "corrections": [{ "original": "...", "corrected": "...",
+                                    "natural": "...", "note": "..." }] } }
+  ],
   "score": { "date": "YYYY-MM-DD", "accuracy": 0, "range": 0, "creativity": 0,
              "verdict": "tek cümlelik Türkçe gerekçe" },
   "plan": { "targetLevel": "B1", "targetDate": "YYYY-MM-DD", "remainingHours": 0,
             "dailyNewWords": 5, "dailyMinutes": 20, "focus": ["..."],
             "note": "tek cümlelik Türkçe not",
+            "advice": "bugünün somut tavsiyesi",
+            "targetReason": "gün sayısını niye oynattığın (oynatmadıysan koyma)",
             "sizing": { "writingSentences": [4, 6], "speakingSeconds": 60 },
             "updatedAt": "ISO tarih" }
 }
@@ -634,6 +864,30 @@ node scripts/sync.mjs push <dosyanın-tam-yolu>
 Betik göndermeden önce JSON'u doğrular; bozuksa hata verip durur.
 Başarılı olursa `GÖNDERİLDİ` ve bayt sayısı yazar. Sonra geçici dosyayı sil.
 
+## 7.5 Paket bütçesi — ⚠️ **uzatma**
+
+Bu komut Claude Max aboneliğinden çalışıyor; sınırsız değil. Paket büyüdükçe
+hem token yiyor hem de kalitesi düşüyor (uzun listede özen dağılır). Günde bir
+kez çalıştırılacak biçimde ölçülü tut:
+
+| Bölüm | Ölçü |
+|---|---|
+| `lesson.passage` | seviye tablosundaki kelime sayısı — üstüne çıkma |
+| `lesson.glossary` | metindeki içerik kelimeleri (150-250 kelimede 40-70 satır) |
+| `conversation.turns` | **6-10 tur**, `say` alanları kısa |
+| `conversationReviews[].corrections` | sohbet başına **en fazla 5** |
+| `content` | **2-4 öneri**, `words` başına 4-6 kelime |
+| `nextTasks` | 2-3 görev |
+
+**Sohbet bu paketin en pahalı yeni parçası değil** — asıl yük `glossary`.
+Sohbet dökümünü okumak + 8 tur yazmak günlük pakete kabaca beşte bir ekliyor.
+Günde **tek** `/ogretmen` çalıştırıldığı sürece sorun çıkmaz; günde üç kez
+çalıştırmak yerine biriktirip bir kez çalıştırmak hem ucuz hem daha iyi olur,
+çünkü bir günün tamamını birden görürsün.
+
+Sıkışırsan sırayla kısacağın yer: önce `content` sayısı, sonra sohbet tur
+sayısı, **en son `glossary`** — sözlük ürünün kalbi, oradan kesme.
+
 ## 8. Kullanıcıya özet ver
 
 Türkçe, kısa:
@@ -641,6 +895,8 @@ Türkçe, kısa:
 - En sık hatası ne
 - Kaç yeni kelime eklendi
 - Sıradaki görevlerin konusu
+- Bugünün sohbet konusu ve önerilen içerik (dizi/şarkı)
+- Hedef gününü oynattıysan: kaç gün, niye
 - *"Telefonda Ayarlar → Şimdi senkronla dediğinde gelecek."*
 
 Düzeltmelerin tamamını buraya dökme — onları telefonunda okuyacak.

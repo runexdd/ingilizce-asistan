@@ -34,6 +34,12 @@ export default function TodayScreen() {
   const correctedCount = data.tasks.filter(
     (t) => t.feedback !== null && !t.feedbackSeen
   ).length;
+
+  /** Bugüne sohbet geldi mi ve henüz bitirilmedi mi */
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const conversationWaiting =
+    data.conversationPlan?.date === todayISO &&
+    !(data.conversations ?? []).some((c) => c.date === todayISO && c.finished);
   const isWeekend = plan.dayType === 'weekend';
   const accent = isWeekend ? colors.weekend : colors.accent;
   const accentSoft = isWeekend ? colors.weekendSoft : colors.accentSoft;
@@ -63,6 +69,24 @@ export default function TodayScreen() {
             içerik senin seviyene göre seçilecek.
           </Text>
           <Text style={styles.placementCta}>Teste başla →</Text>
+        </Pressable>
+      )}
+
+      {/* Günün sohbeti — öğretmen gönderdiyse ve bugün henüz yapılmadıysa.
+          Öğretmen sekmesinde de duruyor ama günlük alışkanlık burada kurulur:
+          kullanıcı önce "Bugün" ekranını açıyor. */}
+      {conversationWaiting && (
+        <Pressable
+          style={({ pressed }) => [styles.feedbackCard, pressed && styles.taskPressed]}
+          onPress={() => router.push('/conversation')}
+        >
+          <View style={styles.taskMain}>
+            <Text style={styles.feedbackTitle}>💬 Günün sohbeti hazır</Text>
+            <Text style={styles.feedbackText}>
+              {data.conversationPlan?.topic} — mikrofonla ya da yazarak
+            </Text>
+          </View>
+          <Text style={styles.feedbackArrow}>→</Text>
         </Pressable>
       )}
 

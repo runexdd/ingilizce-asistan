@@ -9,16 +9,19 @@
  * geçilecekse sadece burası değişir.
  */
 
+import { transcriptText } from '../core/conversation';
 import {
   actualWeeklyMinutes,
   measureMomentum,
   measureProgress,
 } from '../core/progress';
-import { toISODate } from '../core/srs';
+import { addDays, toISODate } from '../core/srs';
 import { getTodayWordProgress, type WordProgress } from '../db/selectors';
 import type {
   AppData,
   ContentSuggestion,
+  ConversationPlan,
+  ConversationReview,
   DailyLesson,
   Feedback,
   SuggestedTask,
@@ -40,6 +43,22 @@ export interface OutboxTask {
   date: string;
 }
 
+/** Yapılmış bir sohbetin öğretmene giden hâli */
+export interface OutboxConversation {
+  id: string;
+  date: string;
+  topic: string;
+  /** Okunabilir döküm — öğretmen bunu okuyup düzeltir */
+  transcript: string;
+  turnsDone: number;
+  turnsTotal: number;
+  finished: boolean;
+  /** Kaç cevabı mikrofonla verdi */
+  spokenTurns: number;
+  /** Uygulamanın yerel kurallarla yakaladıkları — öğretmen tekrar etmesin */
+  instantNotes: string[];
+}
+
 /** Telefon → Claude Code */
 export interface OutboxPayload {
   generatedAt: string;
@@ -49,6 +68,8 @@ export interface OutboxPayload {
     weakestSkill?: string;
     weekdayMinutes: number;
     weekendMinutes: number;
+    /** Zevkleri — dizi/film/müzik önerisi ve sohbet konusu buradan seçilir */
+    interests?: string;
   };
   /** Düzeltme bekleyen görevler */
   pendingTasks: OutboxTask[];
@@ -84,6 +105,28 @@ export interface OutboxPayload {
    * verir; uygulama bu kararı vermez, sadece ölçer.
    */
   wordProgress: WordProgress[];
+  /**
+   * Değerlendirilmeyi bekleyen sohbetler.
+   *
+   * Ürünün yeni ayağı: her gün kullanıcının ilgi alanından (dizi bölümü,
+   * şarkı) bir konu üstüne konuşuluyor. Uygulama sohbeti yürütür ama
+   * **yargılamaz** — düzeltme, doğal karşılık ve akıcılık puanı öğretmenin işi.
+   */
+  conversations: OutboxConversation[];
+  /**
+   * Tamamlanan içerikler — hangi bölüm izlendi, hangi şarkı dinlendi.
+   * Öğretmen diziyi kaldığı bölümden sürdürür; aynı bölümü iki kez vermez.
+   */
+  contentLog: Array<{ type: string; title: string; date: string }>;
+  /** Bugün önerilip henüz yapılmamış içerikler */
+  contentPending: Array<{ type: string; title: string }>;
+  /**
+   * Hedef tarihinin son 14 günü.
+   *
+   * Öğretmen `remainingHours`'ı oynatırken buraya bakar: sayı zaten dün
+   * kısaldıysa bugün bir daha kısaltmak abartı olur.
+   */
+  targetHistory: Array<{ date: string; level: string; daysRemaining: number }>;
   /** Öğretmenin mevcut planı — varsa üzerine karar verir */
   currentPlan?: TeacherPlan;
 }
@@ -122,6 +165,19 @@ export interface InboxPayload {
    * Tüm görevler bu kelimelere bağlanır.
    */
   lesson?: DailyLesson;
+  /**
+   * Günün sohbeti — öğretmenin önceden yazdığı senaryo.
+   *
+   * Telefonda canlı yapay zekâ yok; öğretmen o günün dizisini/şarkısını ve
+   * kullanıcının seviyesini bilerek turları önceden yazıyor, uygulama
+   * yürütüyor. Detaylı kural `.claude/commands/ogretmen.md` §5.1'de.
+   */
+  conversation?: ConversationPlan;
+  /** Bir önceki günün sohbetlerine yazılan değerlendirmeler */
+  conversationReviews?: Array<{
+    conversationId: string;
+    review: ConversationReview;
+  }>;
 }
 
 /* ------------------------------------------------------------- yardımcı */
@@ -243,6 +299,28 @@ export function buildOutbox(data: AppData): OutboxPayload {
       )
     : -1;
 
+  /**
+   * Henüz değerlendirilmemiş sohbetler. Yarım bırakılanlar da gider —
+   * "başlayıp üçüncü turda bıraktı" bilgisi öğretmen için değerlidir.
+   */
+  const pendingConversations = data.conversations
+    .filter((c) => c.syncState === 'pending' && c.messages.some((m) => m.role === 'user'))
+    .map((c) => ({
+      id: c.id,
+      date: c.date,
+      topic: c.topic,
+      transcript: transcriptText(c),
+      turnsDone: c.turnsDone,
+      turnsTotal: c.turnsTotal,
+      finished: c.finished,
+      spokenTurns: c.spokenTurns,
+      instantNotes: Array.from(
+        new Set(c.messages.flatMap((m) => m.notes ?? []))
+      ),
+    }));
+
+  const historyStart = toISODate(addDays(today, -13));
+
   return {
     generatedAt: new Date().toISOString(),
     profile: {
@@ -251,6 +329,7 @@ export function buildOutbox(data: AppData): OutboxPayload {
       weakestSkill: data.profile.weakestSkill,
       weekdayMinutes: data.profile.weekdayMinutes,
       weekendMinutes: data.profile.weekendMinutes,
+      interests: data.profile.interests,
     },
     pendingTasks: pending.map((t) => ({
       id: t.id,
@@ -284,6 +363,18 @@ export function buildOutbox(data: AppData): OutboxPayload {
       daysSinceLastSession: daysSince,
     },
     wordProgress: getTodayWordProgress(data, today),
+    conversations: pendingConversations,
+    contentLog: (data.contentDone ?? []).slice(-30),
+    contentPending: data.content
+      .filter((c) => !c.done)
+      .map((c) => ({ type: c.type, title: c.title })),
+    targetHistory: (data.targetHistory ?? [])
+      .filter((p) => p.date >= historyStart)
+      .map((p) => ({
+        date: p.date,
+        level: p.level,
+        daysRemaining: p.daysRemaining,
+      })),
     currentPlan: data.plan,
   };
 }
