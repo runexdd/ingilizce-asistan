@@ -132,14 +132,29 @@ export function matchCase(term: string, source: string): string {
   return lowered + term.slice(1);
 }
 
+/**
+ * Aynı karşılığı bir kez tutar.
+ *
+ * ⚠️ Tekrarı **silmeden önce sözcük türünü devralır.** Google kelimenin düz
+ * çevirisini türsüz veriyor ("feel" → *hissetmek*), aynı karşılık sözlük
+ * bloğunda türüyle birlikte tekrar geliyor (fiil: hissetmek). Körlemesine
+ * silince türsüz olan kalıyor ve sonrasında "hangi türün tanımını
+ * göstereyim" sorusu cevapsız kalıyordu.
+ */
 export function dedupe(cands: Candidate[]): Candidate[] {
-  const seen = new Set<string>();
+  const index = new Map<string, Candidate>();
   const out: Candidate[] = [];
   for (const c of cands) {
+    if (!c.term) continue;
     const key = c.term.toLowerCase();
-    if (!c.term || seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
+    const kept = index.get(key);
+    if (kept) {
+      if (!kept.pos && c.pos) kept.pos = c.pos;
+      continue;
+    }
+    const copy = { ...c };
+    index.set(key, copy);
+    out.push(copy);
   }
   return out;
 }
@@ -199,6 +214,65 @@ export function filterExamples(
   // İnternetten gelen örneklerde 2 tane yeter; öğretmenin yazdıkları zaten
   // ayrı yoldan geliyor ve 3 tanesi de gösteriliyor.
   return ranked.length > 0 ? ranked.slice(0, 2) : undefined;
+}
+
+/** Sözlük bilgisinin bir sözcük türüne ait bölümü */
+export interface DefGroup {
+  /** 'noun' | 'verb' | 'adjective' | 'adverb' … */
+  pos?: string;
+  definition?: string;
+  synonym?: string;
+  examples?: string[];
+}
+
+/** Türkçeleştirilmiş sözcük türünü sözlüğün etiketine çevirir. */
+const POS_BACK: Record<string, string> = {
+  isim: 'noun',
+  fiil: 'verb',
+  sıfat: 'adjective',
+  zarf: 'adverb',
+};
+
+/**
+ * Gösterilecek sözlük bölümünü seçer.
+ *
+ * Aynı yazılışın farklı türleri bambaşka kelimeler olabiliyor:
+ *   felt → isim *keçe* / fiil *hissetmek*
+ *   saw  → isim *testere* / fiil *görmek*
+ *   keep → isim *kale (hisar)* / fiil *tutmak*
+ *
+ * Bu yüzden cümleden seçilen anlamın **türüyle** eşleşen bölüm aranır; önce
+ * kelimenin yazıldığı hâlinde, yoksa sözlük hâlinde. Tek bir biçime bakmak
+ * yetmiyor: fiil bölümü "felt" için *feel* girdisinde, "kept" için *kept*
+ * girdisinde duruyor. Hiçbiri tutmazsa ilk bölüme düşülür.
+ */
+export function pickDefGroup(
+  posTr: string | undefined,
+  surface?: DefGroup[],
+  lemma?: DefGroup[],
+  /**
+   * Kelime düzensiz bir fiil çekimi mi (`felt`, `saw`, `kept`)?
+   *
+   * Öyleyse **sözlük hâline öncelik verilir.** Çünkü bu kelimelerin kendi
+   * girdilerinde de aynı türden bir madde bulunabiliyor ama başka kelimeye
+   * ait: "felt" girdisindeki fiil *keçe yapmak*, "saw" girdisindekiyse
+   * *testereyle kesmek*. Tür eşleşmesi tek başına bunları eleyemiyor.
+   */
+  preferLemma = false
+): DefGroup | undefined {
+  const wanted = posTr ? POS_BACK[posTr] : undefined;
+  if (wanted) {
+    const first = preferLemma ? lemma : surface;
+    const second = preferLemma ? surface : lemma;
+    const hit = first?.find((g) => g.pos === wanted) ?? second?.find((g) => g.pos === wanted);
+    if (hit) return hit;
+  }
+  return surface?.[0] ?? lemma?.[0];
+}
+
+/** Kelime düzensiz fiil tablosunda mı — `pickDefGroup` için. */
+export function isIrregularForm(word: string): boolean {
+  return IRREGULAR_FORMS[word] !== undefined;
 }
 
 /** Panelde gösterilecek "diğer anlamlar" listesi. */

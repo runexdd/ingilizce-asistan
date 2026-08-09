@@ -42,19 +42,23 @@ import {
   baseFormOf,
   dedupe,
   filterExamples,
+  isIrregularForm,
   matchCase,
   otherMeaningsOf,
   pickByContext,
   pickDefault,
+  pickDefGroup,
   type Candidate,
+  type DefGroup,
 } from './wordsense';
 
 /** v1 önbelleği MyMemory'nin hatalı karşılıklarını içeriyordu; v2 aday
  *  listesi tutmadığı için bağlam eşleştirmesi yapamıyordu. */
-const CACHE_KEY = 'ingilizce-asistan/dict-cache-v3';
+const CACHE_KEY = 'ingilizce-asistan/dict-cache-v4';
 const OLD_CACHE_KEYS = [
   'ingilizce-asistan/dict-cache',
   'ingilizce-asistan/dict-cache-v2',
+  'ingilizce-asistan/dict-cache-v3',
 ];
 /** Önbellek sınırı — sonsuz büyümesin */
 const MAX_ENTRIES = 2000;
@@ -99,10 +103,10 @@ interface CachedEntry {
   /** "term|pos|fromLemma" biçiminde adaylar — bağlam eşleştirmesi bunun üstünde
    *  çalışır, bu yüzden seçilen anlam değil aday listesi saklanır */
   candidates?: string[];
-  synonym?: string;
-  /** Seviyeye göre süzülmeden önceki hâlleri; süzme okurken yapılır */
-  examples?: string[];
-  definition?: string;
+  /** Yazıldığı hâlin ve sözlük hâlinin sözlük bilgisi ayrı ayrı saklanır;
+   *  hangisinin gösterileceği cümleye göre okurken belirleniyor */
+  defSurface?: DefGroup[];
+  defLemma?: DefGroup[];
   baseForm?: string;
 }
 
@@ -253,61 +257,55 @@ async function fetchDefinition(word: string): Promise<DictApiEntry[] | null> {
 }
 
 /**
- * İngilizce tanım + eş anlamlı + örnek cümleler.
+ * İngilizce tanım + eş anlamlı + örnek cümleler, **sözcük türüne göre ayrık.**
  *
- * ⚠️ Sadece **ilk girdi** kullanılır. dictionaryapi.dev aynı yazılışa sahip
- * farklı kelimeleri ayrı girdiler hâlinde döndürüyor: "evening" için hem
- * *akşam* hem de *even* fiilinin çekimi geliyor. Hepsi birleştirilince
- * "evening" örneği diye "We need to even this playing field" çıkıyordu.
+ * Neden ayrık: aynı yazılışın farklı türleri bambaşka kelimeler oluyor ve
+ * hepsini tek torbaya atmak yanlış öğretiyor. Canlı testte görülenler:
+ *   felt  → isim girdisi *keçe* ("to felt the cylinder of a steam engine")
+ *   saw   → isim girdisi *testere*
+ *   keep  → isim girdisi *kale (hisar)*
+ * Doğrusu, cümleden seçilen anlamın türüyle eşleşen bölümü göstermek:
+ * anlam fiilse fiil tanımı, isimse isim tanımı. Seçimi `pickDefGroup` yapar.
+ *
+ * Bölümler **bütün girdilerden** toplanır ama sırası korunur: ilk girdinin
+ * ilk bölümü listenin başında durur. Böylece tür eşleşmesi ararken servisin
+ * ayrı girdiye koyduğu fiil bölümü de bulunabiliyor ("watch"ın fiil hâli
+ * ikinci girdide), tür eşleşmezse de yine ilk girdiye düşülüyor — "evening"
+ * örneği diye "even" fiilinin cümlesinin çıkması bu sıralamayla önleniyor.
  */
-async function defineOnline(
-  word: string,
-  lemma?: string
-): Promise<{
-  definition?: string;
-  synonym?: string;
-  examples: string[];
-  baseForm?: string;
-} | null> {
-  let data = await fetchDefinition(word);
-  let matched = word;
-
-  if (!data && lemma) {
-    data = await fetchDefinition(lemma);
-    if (data) matched = lemma;
-  }
+async function defineOnline(word: string): Promise<DefGroup[] | null> {
+  const data = await fetchDefinition(word);
   if (!data) return null;
 
-  const meanings = data[0]?.meanings ?? [];
-  const first = meanings[0];
-  const def = first?.definitions?.[0]?.definition;
-
-  const examples: string[] = [];
-  for (const m of meanings) {
-    for (const d of m.definitions ?? []) {
+  const groups: DefGroup[] = [];
+  for (const meaning of data.flatMap((entry) => entry.meanings ?? [])) {
+    const definition = meaning.definitions?.[0]?.definition;
+    const examples: string[] = [];
+    for (const d of meaning.definitions ?? []) {
       if (d.example && !examples.includes(d.example)) examples.push(d.example);
-      if (examples.length >= 6) break;
+      if (examples.length >= 4) break;
     }
-    if (examples.length >= 6) break;
+
+    /** Eş anlamlının ilki alınır; liste sıklığa göre sıralı, sondakiler
+     *  ("undern" gibi) artık kullanılmayan kelimeler oluyor. */
+    const synonym = (meaning.synonyms ?? []).find(
+      (s) => /^[a-zA-Z-]{2,}$/.test(s) && s.toLowerCase() !== word.toLowerCase()
+    );
+
+    if (!definition && examples.length === 0 && !synonym) continue;
+    groups.push({
+      pos: meaning.partOfSpeech,
+      definition:
+        definition && meaning.partOfSpeech
+          ? `(${meaning.partOfSpeech}) ${definition}`
+          : definition,
+      synonym,
+      examples: examples.length ? examples : undefined,
+    });
   }
-
-  /** Eş anlamlının ilki alınır; liste sıklığa göre sıralı, sondakiler
-   *  ("undern" gibi) artık kullanılmayan kelimeler oluyor. */
-  const synonym = (first?.synonyms ?? []).find(
-    (s) => /^[a-zA-Z-]{2,}$/.test(s) && s.toLowerCase() !== word.toLowerCase()
-  );
-
-  return {
-    definition: def
-      ? first?.partOfSpeech
-        ? `(${first.partOfSpeech}) ${def}`
-        : def
-      : undefined,
-    synonym,
-    examples,
-    baseForm: matched !== word ? matched : undefined,
-  };
+  return groups.length ? groups : null;
 }
+
 
 /* -------------------------------------------------------------------- API */
 
@@ -357,39 +355,32 @@ export async function lookupWord(
 
   /* 1. Öğretmenin sözlüğü — bağlamı bilen tek kaynak */
   if (entry?.meaning) {
-    const isPhrase = entry.word.trim().includes(' ');
-
     /**
-     * ⛔ Kalıplarda internetten ek bilgi çekilmez.
+     * ⛔ Öğretmen bir kelimeye karşılık yazdıysa o kelimede internete
+     * **hiç çıkılmaz.**
      *
-     * Sözlük servisi kalıbı değil, dokunulan **tek kelimeyi** tanır. "every
-     * evening" için eş anlamlı diye *eve*, örnek diye *"It was the evening of
-     * the Roman Empire"* dönüyordu — ikisi de kalıpla ilgisiz. Kalıpta ne
-     * varsa öğretmenden gelir; yoksa hiç gösterilmez.
+     * Sebebi canlı testte görüldü: metinde "felt" = *hissetti* iken sözlük
+     * servisi "felt"i kumaş (keçe) sanıp örnek olarak *"to felt the cylinder
+     * of a steam engine"* döndürdü. Aynı şey kalıplarda da oluyordu ("every
+     * evening" için eş anlamlı diye *eve*). Servis dokunulan kelimenin
+     * **hangi anlamda** kullanıldığını bilmiyor; öğretmen biliyor.
+     *
+     * Bu yüzden burada gösterilen her şey öğretmenden gelir. Öğretmen örnek
+     * yazmadıysa örnek gösterilmez — yanlış örnek, örneksizlikten kötüdür.
+     * (`ogretmen.md` artık her sözlük girdisine örnek yazılmasını şart
+     * koşuyor, dolayısıyla bu boşluk kapanıyor.)
+     *
+     * Yan fayda: panel ağ beklemeden, anında ve çevrimdışı açılıyor.
      */
-    /**
-     * İnternete yalnızca öğretmenin bırakmadığı alan varsa gidilir.
-     * `senses` buradan gelemez (o servis Türkçe karşılık vermiyor), o yüzden
-     * ölçüt sadece örnek ve eş anlamlı. Öğretmen ikisini de yazmışsa hiç
-     * çıkılmıyor — panel anında ve çevrimdışı açılıyor.
-     */
-    const extra =
-      !isPhrase && (!entry.examples?.length || !entry.synonym)
-        ? await defineOnline(word, lemma)
-        : null;
-
     return {
       word: entry.word,
-      phrase: isPhrase ? entry.word : undefined,
+      phrase: entry.word.trim().includes(' ') ? entry.word : undefined,
       meaning: entry.meaning,
       source: 'glossary',
       otherMeanings: entry.senses?.length ? entry.senses : undefined,
-      synonym: entry.synonym ?? extra?.synonym,
-      examples: entry.examples?.length
-        ? entry.examples.slice(0, 3)
-        : filterExamples(extra?.examples, word, lemma, level),
+      synonym: entry.synonym,
+      examples: entry.examples?.length ? entry.examples.slice(0, 3) : undefined,
       examplesFromTeacher: !!entry.examples?.length,
-      definition: extra?.definition,
       sentenceTr: (await sentencePromise) ?? undefined,
     };
   }
@@ -404,30 +395,29 @@ export async function lookupWord(
       candidates: decodeCandidates(cached.candidates),
       fallback: cached.meaning,
       lemma,
+      level,
       sentenceTr,
-      synonym: cached.synonym,
-      examples: filterExamples(cached.examples, word, lemma, level),
-      definition: cached.definition,
-      baseForm: cached.baseForm,
+      defSurface: cached.defSurface,
+      defLemma: cached.defLemma,
       source: 'cache',
     });
   }
 
-  /* 3. İnternet — yazılan hâl, sözlük hâli ve tanım aynı anda istenir */
-  const [surfaceCands, lemmaCands, altCands, defined, sentenceTr] = await Promise.all([
-    wordCandidates(word, false),
-    lemma ? wordCandidates(lemma, true) : Promise.resolve([]),
-    (() => {
-      const alt = altBaseForm(word);
-      return alt && alt !== lemma ? wordCandidates(alt, true) : Promise.resolve([]);
-    })(),
-    defineOnline(word, lemma),
-    sentencePromise,
-  ]);
+  /* 3. İnternet — bütün sorgular aynı anda gider */
+  const alt = altBaseForm(word);
+  const [surfaceCands, lemmaCands, altCands, defSurface, defLemma, sentenceTr] =
+    await Promise.all([
+      wordCandidates(word, false),
+      lemma ? wordCandidates(lemma, true) : Promise.resolve([]),
+      alt && alt !== lemma ? wordCandidates(alt, true) : Promise.resolve([]),
+      defineOnline(word),
+      lemma ? defineOnline(lemma) : Promise.resolve(null),
+      sentencePromise,
+    ]);
 
   const candidates = dedupe([...surfaceCands, ...lemmaCands, ...altCands]);
 
-  if (candidates.length === 0 && !defined) {
+  if (candidates.length === 0 && !defSurface && !defLemma) {
     return { word, meaning: null, source: 'none', sentenceTr: sentenceTr ?? undefined };
   }
 
@@ -436,10 +426,9 @@ export async function lookupWord(
   cache[word] = {
     meaning: fallback,
     candidates: encodeCandidates(candidates),
-    synonym: defined?.synonym,
-    examples: defined?.examples,
-    definition: defined?.definition,
-    baseForm: lemma ?? defined?.baseForm,
+    defSurface: defSurface ?? undefined,
+    defLemma: defLemma ?? undefined,
+    baseForm: lemma,
   };
   scheduleSave();
 
@@ -448,11 +437,10 @@ export async function lookupWord(
     candidates,
     fallback,
     lemma,
+    level,
     sentenceTr,
-    synonym: defined?.synonym,
-    examples: filterExamples(defined?.examples, word, lemma, level),
-    definition: defined?.definition,
-    baseForm: lemma ?? defined?.baseForm,
+    defSurface: defSurface ?? undefined,
+    defLemma: defLemma ?? undefined,
     source: 'online',
   });
 }
@@ -463,19 +451,28 @@ function buildResult(input: {
   candidates: Candidate[];
   fallback: string | null;
   lemma?: string;
+  level?: string;
   sentenceTr: string | null;
-  synonym?: string;
-  examples?: string[];
-  definition?: string;
-  baseForm?: string;
+  /** Yazıldığı hâlin sözlük bilgisi ("felt" → keçe + …) */
+  defSurface?: DefGroup[];
+  /** Sözlük hâlinin sözlük bilgisi ("feel" → hissetmek + …) */
+  defLemma?: DefGroup[];
   source: LookupSource;
 }): LookupResult {
   const contextual = pickByContext(input.candidates, input.sentenceTr);
-  const chosen =
-    contextual?.term ??
-    input.fallback ??
-    pickDefault(input.candidates, !!input.lemma)?.term ??
-    null;
+  const picked =
+    contextual ??
+    input.candidates.find((c) => c.term === input.fallback) ??
+    pickDefault(input.candidates, !!input.lemma);
+  const chosen = picked?.term ?? input.fallback ?? null;
+
+  // Tanım/örnek, seçilen anlamın **sözcük türüyle** eşleşen bölümden alınır
+  const def = pickDefGroup(
+    picked?.pos,
+    input.defSurface,
+    input.defLemma,
+    isIrregularForm(input.word)
+  );
 
   return {
     word: input.word,
@@ -483,10 +480,11 @@ function buildResult(input: {
     source: input.source,
     fromContext: !!contextual,
     otherMeanings: otherMeaningsOf(input.candidates, chosen),
-    synonym: input.synonym,
-    examples: input.examples,
-    definition: input.definition,
-    baseForm: input.baseForm,
+    synonym: def?.synonym,
+    examples: filterExamples(def?.examples, input.word, input.lemma, input.level),
+    examplesFromTeacher: false,
+    definition: def?.definition,
+    baseForm: input.lemma,
     sentenceTr: input.sentenceTr ?? undefined,
   };
 }
