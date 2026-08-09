@@ -168,6 +168,17 @@ Her görev `{ kind, prompt, targetError }`. `prompt` İngilizce yazılır.
 > ..." de, konuşma promptunda aynı kelimeleri iste, içerik önerisini aynı
 > temadan seç. Gün boyunca aynı kelimeler dönsün.
 
+### ⛔ Görev listesi kuralları
+
+1. **Günde TEK yazma görevi.** `writing-micro` ve `writing-long` aynı gün
+   gönderilmez — biri seçilir. Hafta sonu uzun, iş günü kısa.
+   (Uygulama fazlasını eler ama sen zaten tek gönder.)
+2. **`reading` görevi gönderme.** Günün hikâyesi (`lesson.passage`) varsa
+   uygulama okuma görevini kendisi ekliyor. Sen listede tekrar etme.
+3. **Toplam 2-3 görev yeter.** Kart tekrarı zaten üstüne biniyor.
+   İdeal gün: 1 yazma + 1 konuşma (+ uygulamanın eklediği okuma + kartlar).
+4. Dinleme/dış içerik `nextTasks`'a değil, `content`'e yazılır.
+
 **Görev boyutu sabit değil.** Şuna göre ayarla:
 - **Seviye**: A2 → 3-4 cümle · B1 → 5-6 cümle · B2 → paragraf
 - **Dün nasıl geçti**: zorlandıysa kısalt, rahat geçtiyse bir tık uzat

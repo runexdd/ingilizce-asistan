@@ -24,6 +24,9 @@ export default function TodayScreen() {
       lightMode,
       // Öğretmen görev gönderdiyse günün planı odur
       suggestedTasks: data.suggestedTasks,
+      hasLessonPassage: Boolean(
+        data.lesson?.passage && data.lesson.date === today.toISOString().slice(0, 10)
+      ),
     });
   }, [data, lightMode]);
 

@@ -10,8 +10,8 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { pickPassage, type ReadingPassage } from '../../src/core/reading';
+import { speakEnglish, stopSpeaking } from '../../src/core/speech';
 import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
 import { TappableText } from '../../src/ui/TappableText';
@@ -257,16 +257,13 @@ function ReadingTask() {
 
   function toggleSpeech(text: string) {
     if (speaking) {
-      void Speech.stop();
+      stopSpeaking();
       setSpeaking(false);
       return;
     }
     setSpeaking(true);
-    Speech.speak(text, {
-      language: 'en-US',
-      rate: 0.9,
+    void speakEnglish(text, {
       onDone: () => setSpeaking(false),
-      onStopped: () => setSpeaking(false),
       onError: () => setSpeaking(false),
     });
   }
@@ -395,16 +392,13 @@ function SpeakingTask() {
 
   function speakPrompt() {
     if (speaking) {
-      void Speech.stop();
+      stopSpeaking();
       setSpeaking(false);
       return;
     }
     setSpeaking(true);
-    Speech.speak(prompt, {
-      language: 'en-US',
-      rate: 0.9,
+    void speakEnglish(prompt, {
       onDone: () => setSpeaking(false),
-      onStopped: () => setSpeaking(false),
       onError: () => setSpeaking(false),
     });
   }

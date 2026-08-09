@@ -77,6 +77,12 @@ export interface PlannerInput {
    * Boşsa aşağıdaki yedek karışım devreye girer.
    */
   suggestedTasks?: Array<{ kind: string; prompt: string; targetError?: string }>;
+  /**
+   * Bugün için öğretmenin yazdığı hikâye bölümü var mı.
+   * Varsa okuma görevi listede garanti edilir — öğretmen görev listesinde
+   * unutsa bile hikâyeye erişim kaybolmasın.
+   */
+  hasLessonPassage?: boolean;
 }
 
 /**
@@ -110,11 +116,45 @@ export function buildDailyPlan(input: PlannerInput): DailyPlan {
 
   if (fromTeacher.length > 0) {
     const budget = dayType === 'workday' ? settings.weekdayMinutes : settings.weekendMinutes;
-    // Kart tekrarına yer bırak
-    const taskBudget = Math.max(3, budget - Math.min(3, input.dueCardCount * 0.25));
-    const per = Math.max(2, Math.round(taskBudget / fromTeacher.length));
 
-    fromTeacher.forEach((t, i) => {
+    // Günün hikâyesi varsa okuma HER ZAMAN listede olur.
+    // Öğretmen görev listesinde unutsa bile hikâye erişilebilir kalmalı.
+    if (input.hasLessonPassage) {
+      tasks.push({
+        id: 'reading',
+        kind: 'reading',
+        title: 'Okuma',
+        detail: 'Günün hikâyesi — kelimelere dokunup anlamlarını gör',
+        estimatedMinutes: dayType === 'workday' ? 3 : 7,
+      });
+    }
+
+    // Yazma günde TEK olur. İki yazma görevi bıktırır ve süreyi yer.
+    // Gün tipine uygun olanı seç: hafta sonu uzun, iş günü kısa.
+    const preferredWriting = dayType === 'weekend' ? 'writing-long' : 'writing-micro';
+    let writingUsed = false;
+
+    const selected = fromTeacher.filter((t) => {
+      if (t.kind === 'reading') return false; // yukarıda zaten eklendi
+      if (t.kind.startsWith('writing')) {
+        if (writingUsed) return false;
+        writingUsed = true;
+        return true;
+      }
+      return true;
+    });
+
+    // İki yazma geldiyse gün tipine uygun olanı öne al
+    selected.sort((a, b) => {
+      const score = (k: string) => (k === preferredWriting ? -1 : 0);
+      return score(a.kind) - score(b.kind);
+    });
+
+    const used = tasks.reduce((s, t) => s + t.estimatedMinutes, 0);
+    const taskBudget = Math.max(3, budget - used - Math.min(3, input.dueCardCount * 0.25));
+    const per = Math.max(2, Math.round(taskBudget / Math.max(1, selected.length)));
+
+    for (const t of selected) {
       tasks.push({
         id: t.kind,
         kind: taskKindOf(t.kind),
@@ -123,12 +163,8 @@ export function buildDailyPlan(input: PlannerInput): DailyPlan {
           ? `Odak: ${t.targetError}`
           : 'Öğretmenin bugün için verdiği görev',
         estimatedMinutes: per,
-        // Aynı tip iki kez gelirse ayırt edilebilsin
-        ...(i > 0 && fromTeacher.findIndex((x) => x.kind === t.kind) !== i
-          ? { id: `${t.kind}` }
-          : {}),
       });
-    });
+    }
   } else if (dayType === 'workday') {
     // 2) YEDEK — öğretmen henüz görev göndermediyse.
     //    Kısa günde bile tek tip değil: üretim + tanıma birlikte.
