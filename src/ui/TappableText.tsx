@@ -5,8 +5,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  type StyleProp,
   Text,
   View,
+  type ViewStyle,
 } from 'react-native';
 import { lookupWord, normalizeWord, type LookupResult } from '../core/dictionary';
 import { speakEnglish } from '../core/speech';
@@ -39,6 +41,14 @@ interface Props {
   knownWords?: string[];
   /** Kullanıcının CEFR seviyesi — örnek cümleler buna göre süzülür */
   level?: string;
+  /**
+   * Dış boşluk buradan verilir, sarmalayıcı View ile DEĞİL.
+   *
+   * React Native Web her View'a `z-index: 0` yazıyor ve bu her View'ı ayrı bir
+   * yığın bağlamı yapıyor; araya konan sarmalayıcı, panelin `zIndex`'ini kendi
+   * içine hapsedip "Okudum" butonunun altında bırakıyordu.
+   */
+  style?: StyleProp<ViewStyle>;
 }
 
 interface Box {
@@ -58,6 +68,7 @@ export function TappableText({
   onAddCard,
   knownWords = [],
   level,
+  style,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   /** Vurgulanan kelime aralığı — kalıp seçilirse kalıbın tamamı sarıya döner */
@@ -218,7 +229,7 @@ export function TappableText({
 
   return (
     <View
-      style={styles.container}
+      style={[styles.container, style]}
       onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
     >
       <View style={styles.flow}>

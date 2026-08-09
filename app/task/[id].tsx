@@ -182,17 +182,19 @@ function ReadingTask() {
           eklersin.
         </Text>
 
-        <View style={{ marginTop: spacing.md }}>
-          <TappableText
-            text={lessonPassage.text}
-            glossary={lesson?.glossary ?? []}
-            knownWords={data.cards.map((c) => c.word)}
-            level={data.profile.level}
-            onAddCard={(word, meaning) =>
-              update((current) => addCard(current, word, meaning))
-            }
-          />
-        </View>
+        {/* Sarmalayıcı View KOYMA — react-native-web her View'a z-index: 0
+            yazdığı için araya giren katman, açılan kelime panelini aşağıdaki
+            butonun altında bırakıyor. Boşluk `style` ile veriliyor. */}
+        <TappableText
+          style={{ marginTop: spacing.md }}
+          text={lessonPassage.text}
+          glossary={lesson?.glossary ?? []}
+          knownWords={data.cards.map((c) => c.word)}
+          level={data.profile.level}
+          onAddCard={(word, meaning) =>
+            update((current) => addCard(current, word, meaning))
+          }
+        />
 
         {lessonQuestions.length > 0 && (
           <>
