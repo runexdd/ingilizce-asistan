@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { toISODate } from '../core/srs';
+import { newId } from './id';
 import { DATA_VERSION, type AppData, type Card } from './types';
 
 /**
@@ -22,11 +23,8 @@ import { DATA_VERSION, type AppData, type Card } from './types';
 
 const STORAGE_KEY = 'ingilizce-asistan/data';
 
-let idCounter = 0;
-export function newId(prefix = 'id'): string {
-  idCounter += 1;
-  return `${prefix}_${Date.now().toString(36)}_${idCounter}`;
-}
+/** Kimlik üretici `id.ts`'e taşındı (saf olsun, testten yüklenebilsin). */
+export { newId } from './id';
 
 /**
  * Başlangıç kelimeleri — kasten GENEL günlük İngilizce.

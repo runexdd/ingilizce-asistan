@@ -53,20 +53,42 @@ export function getStudyQueue(
       : []
   );
 
-  const isNew = (card: Card) => card.repetitions === 0 && !card.lastAnsweredAt;
   const isTodays = (card: Card) => lessonWords.has(card.word.trim().toLowerCase());
 
-  // Günün kelimeleri yeni kelime kotasını önce doldursun
-  const fresh = due
-    .filter(isNew)
-    .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
-    .slice(0, Math.max(0, dailyNewWords));
+  /**
+   * Kota **bugün tanıştırılan** kelimeler üzerinden sayılır.
+   *
+   * ⚠️ Buraya "henüz cevaplanmamış kart" diye bakmak hatalıydı: kart ilk
+   * cevapta yeni olmaktan çıkıyor, kota da boşalan yere bir kelime daha
+   * çekiyordu. Yanlış cevaplayan biri hiç ilerleyemiyor, buna karşılık kuyruk
+   * her cevapta uzuyordu — 5 kelimelik gün 17 karta çıkmıştı.
+   */
+  const introducedToday = due.filter((c) => c.introducedAt === todayISO);
+  const untouched = due.filter((c) => !c.introducedAt);
 
-  const started = due.filter((c) => !isNew(c));
+  /**
+   * Kota **bütün kartlar** üzerinden sayılır, sadece bugün sırada bekleyenler
+   * üzerinden değil. Bir kelime üç basamağı bitirip kuyruktan çıkınca yerine
+   * yenisi çekilmemeli: günün bütçesi doldu demektir. Aksi hâlde beş kelime
+   * bitirilir bitirilmez yeni beş kelime geliyordu.
+   */
+  const introducedTodayTotal = data.cards.filter(
+    (c) => c.introducedAt === todayISO
+  ).length;
+  const quota = Math.max(0, dailyNewWords - introducedTodayTotal);
+
+  const fresh = untouched
+    .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
+    .slice(0, quota);
+
+  // Önceki günlerden gelen, tekrarı bugüne düşmüş kartlar
+  const reviews = due.filter((c) => c.introducedAt && c.introducedAt !== todayISO);
+
   const selected = [
+    ...introducedToday,
     ...fresh.filter(isTodays),
     ...fresh.filter((c) => !isTodays(c)),
-    ...started,
+    ...reviews,
   ];
 
   /**

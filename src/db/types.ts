@@ -61,6 +61,15 @@ export interface Card {
   theme?: string;
   /** Son cevabın sonucu — öğretmene giden rapora giriyor */
   lastResult?: 'correct' | 'close' | 'wrong';
+  /**
+   * Kelimenin **ilk kez çalışıldığı** tarih, 'YYYY-MM-DD'.
+   *
+   * Günlük yeni kelime kotası bunun üstünden sayılır. Eskiden "hiç
+   * cevaplanmamış" kartlar sayılıyordu; kart cevaplanır cevaplanmaz yeni
+   * olmaktan çıkıyor, kota da yerine bir kelime daha çekiyordu. Sonuç: her
+   * cevapta kuyruk bir uzuyordu ve 5 kelimelik gün 17 karta çıkıyordu.
+   */
+  introducedAt?: string;
   /** Son çalışıldığı tarih, 'YYYY-MM-DD' */
   lastReviewedAt?: string;
   /**

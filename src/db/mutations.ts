@@ -1,7 +1,7 @@
 import { nextStage, type AnswerVerdict } from '../core/cardcheck';
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import type { InboxPayload } from '../sync/github';
-import { newId } from './store';
+import { newId } from './id';
 import type { AppData, Feedback, Profile, SyncState, TaskRecord } from './types';
 
 /**
@@ -123,6 +123,7 @@ export function answerCard(
           lastResult: verdict,
           lastReviewedAt: iso,
           lastAnsweredAt: now,
+          introducedAt: card.introducedAt ?? iso,
         };
       }
 
@@ -139,6 +140,7 @@ export function answerCard(
         lastResult: verdict,
         lastReviewedAt: iso,
         lastAnsweredAt: now,
+        introducedAt: card.introducedAt ?? iso,
         spokenOkAt: card.spokenOkAt ?? iso,
       };
     }),
