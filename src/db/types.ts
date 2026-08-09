@@ -460,6 +460,14 @@ export interface AppData {
   lesson?: DailyLesson;
   /** Öğretmenin günlük puan geçmişi — ilerleme grafiğinin kaynağı */
   scores: TeacherScore[];
+  /**
+   * Tamamlanan içeriklerin kaydı.
+   *
+   * `content` her senkronda üzerine yazılıyor (her gün yeni öneri gelir), ama
+   * "hangi bölümü izledim, hangi şarkıyı dinledim" kalıcı olmalı: öğretmen
+   * diziyi kaldığı bölümden devam ettirecek ve istatistiğe girecek.
+   */
+  contentDone: Array<{ type: string; title: string; date: string }>;
   /** Öğretmenin bugün için yazdığı sohbet senaryosu */
   conversationPlan?: ConversationPlan;
   /** Yapılmış sohbetlerin kaydı — öğretmene giden ham veri */

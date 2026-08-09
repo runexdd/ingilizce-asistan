@@ -1,6 +1,6 @@
 import { nextStage, type AnswerVerdict } from '../core/cardcheck';
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
-import { wordsForLevel } from '../core/wordbank';
+import { isTooHardFor, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
 import type { AppData, Feedback, Profile, SyncState, TaskRecord } from './types';
@@ -102,7 +102,20 @@ export function seedDailyWords(
   if (data.lesson?.date === iso) return data;
 
   const introducedToday = data.cards.filter((c) => c.introducedAt === iso).length;
-  const waiting = data.cards.filter((c) => !c.introducedAt).length;
+
+  /**
+   * Sırada bekleyen kartlar sayılırken **seviyenin çok üstündekiler sayılmaz.**
+   *
+   * `getStudyQueue` onları zaten arkaya atıyor; burada da kotayı doldurmuş
+   * saymazsak iki fonksiyon aynı şeyi söylemiş olur. Aksi hâlde kullanıcının
+   * gerçek durumu ortaya çıkıyordu: destede beş tane B2 kalıbı varken kota
+   * dolu görünüyor, yeni kelime eklenmiyor, kuyruk da onları geriye atınca
+   * çalışacak hiçbir şey kalmıyordu.
+   */
+  const waiting = data.cards.filter(
+    (c) => !c.introducedAt && !isTooHardFor(c.word, data.profile.level)
+  ).length;
+
   const need = dailyNewWords - introducedToday - waiting;
   if (need <= 0) return data;
 

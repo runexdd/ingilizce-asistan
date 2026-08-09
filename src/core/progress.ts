@@ -12,7 +12,7 @@
  */
 
 import { addDays, toISODate } from './srs';
-import type { AppData, TeacherScore } from '../db/types';
+import type { AppData, TargetPoint, TeacherScore } from '../db/types';
 
 /** Tek bir günün / dönemin ölçüm sonucu. Her boyut 0-100. */
 export interface ProgressSnapshot {
@@ -252,6 +252,63 @@ export function estimateTarget(
     confidence,
     note,
   };
+}
+
+/* --------------------------------------------------------- hedefin gidişatı */
+
+export interface TargetTrend {
+  /** Bugünkü kalan gün */
+  days: number;
+  /** En son farklı olan önceki kayıt (yoksa undefined) */
+  previousDays?: number;
+  /** Negatif = hedef yaklaştı, pozitif = uzaklaştı */
+  delta: number;
+  /** "2 gün kısaldı" gibi Türkçe etiket */
+  label: string;
+  /** Grafiğe verilecek son N gün */
+  points: TargetPoint[];
+}
+
+/**
+ * Hedef tarihinin nasıl oynadığını anlatır.
+ *
+ * Kullanıcının istediği tam olarak buydu: *"çok çalışıyorsun, 80 günde B1
+ * olacaksan artık 78 güne düşürecek; girmeyene 82 olacak."* Sayının kendisi
+ * `estimateTarget` içinde çıkıyor (öğretmenin `remainingHours`'ı × gerçek
+ * tempo); burada yapılan iş onu **dünküyle karşılaştırıp** görünür kılmak.
+ *
+ * Aynı gün içinde birden çok kayıt olmaz; karşılaştırma **farklı günler**
+ * arasında yapılır, yoksa sayfa her açıldığında "0 gün değişti" yazardı.
+ */
+export function targetTrend(
+  history: TargetPoint[],
+  currentDays: number
+): TargetTrend {
+  const sorted = [...history].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const points = sorted.slice(-30);
+
+  // Bugünkü kaydı atla; kıyas önceki günlerden yapılır
+  const earlier = sorted.filter((p) => p.daysRemaining !== currentDays);
+  const previous = earlier.at(-1);
+
+  if (!previous) {
+    return {
+      days: currentDays,
+      delta: 0,
+      label: 'İlk tahmin — birkaç gün sonra kıyaslanacak',
+      points,
+    };
+  }
+
+  const delta = currentDays - previous.daysRemaining;
+  const label =
+    delta === 0
+      ? 'Dünle aynı'
+      : delta < 0
+        ? `${Math.abs(delta)} gün kısaldı`
+        : `${delta} gün uzadı`;
+
+  return { days: currentDays, previousDays: previous.daysRemaining, delta, label, points };
 }
 
 /* ----------------------------------------------------------------- uyarı */
