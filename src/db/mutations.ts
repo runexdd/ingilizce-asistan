@@ -1,3 +1,4 @@
+import { nextStage, type AnswerVerdict } from '../core/cardcheck';
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './store';
@@ -29,6 +30,13 @@ export function gradeCard(
   };
 }
 
+export interface AddCardExtras {
+  /** Aynı derecede doğru sayılacak diğer cevaplar */
+  accepted?: string[];
+  /** Kartın geldiği günün teması */
+  theme?: string;
+}
+
 /** Aynı kelime zaten varsa hiçbir şey yapmaz. */
 export function addCard(
   data: AppData,
@@ -36,7 +44,8 @@ export function addCard(
   meaning: string,
   example: string | null = null,
   sourceTaskId: string | null = null,
-  today: Date = new Date()
+  today: Date = new Date(),
+  extras: AddCardExtras = {}
 ): AppData {
   const normalized = word.trim().toLowerCase();
   if (data.cards.some((c) => c.word.trim().toLowerCase() === normalized)) {
@@ -59,8 +68,53 @@ export function addCard(
         dueDate: iso,
         createdAt: iso,
         sourceTaskId,
+        // Her kart en baştan başlar: önce tanıma, sonra yazma, sonra telaffuz
+        stage: 1,
+        accepted: extras.accepted?.length ? extras.accepted : undefined,
+        theme: extras.theme,
       },
     ],
+  };
+}
+
+/**
+ * Kartı 3 aşamalı akışa göre değerlendirir.
+ *
+ * İki şey birden güncellenir ve bilinçli olarak ayrı tutulur:
+ *  - **aşama**: kelimeyi nasıl soracağımız (tanıma → yazma → telaffuz)
+ *  - **tekrar takvimi**: kelimeyi ne zaman soracağımız (SM-2)
+ *
+ * `close` (ufak yazım/telaffuz hatası) doğru sayılır ama aşama ilerlemez;
+ * kelime henüz tam oturmamıştır.
+ */
+export function answerCard(
+  data: AppData,
+  cardId: string,
+  verdict: AnswerVerdict,
+  today: Date = new Date()
+): AppData {
+  const grade: ReviewGrade =
+    verdict === 'correct' ? 'good' : verdict === 'close' ? 'good' : 'again';
+  const iso = toISODate(today);
+
+  return {
+    ...data,
+    cards: data.cards.map((card) => {
+      if (card.id !== cardId) return card;
+      const schedule = reviewCard(card, grade, today);
+      const stage = nextStage(card.stage ?? 1, verdict);
+      return {
+        ...card,
+        ...schedule,
+        stage,
+        lastResult: verdict,
+        lastReviewedAt: iso,
+        // Telaffuz aşamasını ilk kez geçtiği an damgalanır
+        spokenOkAt:
+          card.spokenOkAt ??
+          ((card.stage ?? 1) === 3 && verdict === 'correct' ? iso : undefined),
+      };
+    }),
   };
 }
 
@@ -139,7 +193,9 @@ export function applyFeedback(
     next = recordError(next, err.category, err.explanation, today);
   }
   for (const w of feedback.newWords) {
-    next = addCard(next, w.word, w.meaning, w.example ?? null, taskId, today);
+    next = addCard(next, w.word, w.meaning, w.example ?? null, taskId, today, {
+      accepted: w.accepted,
+    });
   }
 
   return next;
@@ -214,10 +270,18 @@ export function applyInbox(
     );
   }
 
-  // Günün dersi geldiyse hedef kelimeleri karta çevir — o gün tekrar edilecekler
+  /**
+   * Günün dersi geldiyse hedef kelimeleri karta çevir.
+   *
+   * Kartlar, okuma ve konuşma **aynı temanın aynı kelimelerini** dövsün diye
+   * tema da karta yazılıyor; kart ekranı günün kelimelerini öne alıyor.
+   */
   if (inbox.lesson) {
     for (const w of inbox.lesson.targetWords) {
-      next = addCard(next, w.word, w.meaning, w.example ?? null, null, today);
+      next = addCard(next, w.word, w.meaning, w.example ?? null, null, today, {
+        accepted: w.accepted,
+        theme: inbox.lesson.theme,
+      });
     }
   }
 

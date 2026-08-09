@@ -30,8 +30,41 @@ Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 - `recentErrors[]` — daha önce tespit edilmiş, tekrar eden hatalar
 - `knownWords[]` — zaten kartta olan kelimeler
 - `stats` — kart sayısı, seri
+- `wordProgress[]` — **bir önceki günün kelimelerinin kart durumu**
 
 `pendingTasks` boşsa düzeltme üretme; sadece sıradaki görevleri ve içeriği üret.
+
+### `wordProgress` — kelimeler gerçekten öğrenildi mi?
+
+Kartlar üç aşamadan geçiyor: **1 tanıma** (şıklardan anlamı seç) → **2 yazma**
+(karışık yön: TR→EN ve EN→TR) → **3 telaffuz** (cihaz okur, kullanıcı tekrar
+eder, ses karşılaştırılır). Her kelime için gelen alanlar:
+
+```json
+{ "word": "notice", "stage": 3, "spoken": true,
+  "lastResult": "correct", "studiedToday": true }
+```
+
+- `stage` — kelimenin bulunduğu basamak. 3'e çıkmışsa yazabiliyor demektir.
+- `spoken` — telaffuz aşamasını **geçti mi**. `true` ise kelime dört yönden de
+  (tanıma, yazma, telaffuz, metinde görme) geçmiş sayılır.
+- `lastResult` — son cevabın sonucu: `correct` · `close` (ufak hata) · `wrong`
+- `studiedToday` — o gün kartlara hiç bakılmış mı
+
+**Bu listeyi yorumlamak senin işin, uygulamanın değil.** Zorunlu iki iş:
+
+1. **`score.verdict` içinde günün kelimelerine değin.** Tek cümleyle de olsa:
+   hangileri oturdu, hangisi oturmadı. Kullanıcı bunu özellikle istedi —
+   "öğretmen kontrol edip o günkü kelimelerin öğrenilip öğrenilmediğine
+   değinmeli."
+2. **Oturmayan kelimeyi bir sonraki güne taşı.** `stage` 1'de kalmış veya
+   `lastResult` `wrong` olan kelimeyi *yeni* kelime gibi tekrar verme; onu
+   günün metnine ve görevlerine tekrar sok, üstüne yeni kelime yığma.
+   `dailyNewWords`'ü de o gün bir düşür.
+
+`spoken: false` ama `stage: 3` ise kelime yazılabiliyor ama telaffuz
+denenmemiş; okuma parçasında o kelimeyi tekrar geçir ve konuşma görevinde
+kullanmasını iste.
 
 ## 1.5 Seviye — her şeyin ölçüsü ⚠️ **önce burayı oku**
 
@@ -123,7 +156,16 @@ Kategoriler:
 `explanation` **Türkçe** olsun ve kuralı öğretsin, sadece "yanlış" demesin.
 Örnek: *"'since' ile present perfect kullanılır: I have lived here since 2019."*
 
-**`newWords[]`** — `{ word, meaning (Türkçe), example }`
+**`newWords[]`** — `{ word, meaning (Türkçe), example, accepted? }`
+
+> **`accepted`** — kartta aynı derecede doğru sayılacak diğer cevaplar.
+> Kart 2. aşamada kullanıcıya kelimeyi **yazdırıyor**; tek bir doğru cevap
+> dayatmak haksızlık olur. `meaning` "fark etmek" ise `accepted: ["farketmek",
+> "farkına varmak"]` yaz. Türkçe→İngilizce yönü için de aynısı geçerli:
+> `word` "notice" ise `accepted: ["realize"]` gibi gerçekten yerine geçen bir
+> karşılık varsa ekle. Zorlama; yoksa alanı hiç koyma.
+> (Uygulama zaten küçük yazım hatalarını ve baştaki "to/a/an/the"yi affediyor;
+> `accepted` bunun için değil, **gerçekten farklı ama doğru** cevaplar için.)
 
 > `example` alanı **1.5'teki seviye tablosuna** uyar ve kullanıcının o
 > sıradaki zayıf yapısını doğru biçimde modeller. Bu cümle kart ekranında
@@ -185,13 +227,22 @@ ezberlemekten kalıcıdır. Diğer uygulamalarda olmayan şey budur.
 }
 ```
 
-### `targetWords` — kaç tane?
+### `targetWords` — günün kelime seti, kartların kaynağı
 
-`plan.dailyNewWords` kadar. Sayıya sen karar veriyorsun (bkz. 5.5). 5'ten başla,
-tutma oranına göre ayarla, **10'u geçme.**
+`{ word, meaning, example, accepted? }` — alanlar `newWords` ile aynı anlamda.
+
+**Kaç tane:** `plan.dailyNewWords` kadar. **Sayıya sen karar veriyorsun**
+(bkz. 5.5); tavan 1.5'teki tabloda. Uygulama o gün bu sayıdan fazla *yeni*
+kart göstermiyor — fazlasını yazarsan kullanıcıya değil, kuyruğa gider.
 
 Kelime seçim kuralları 2. bölümdekiyle aynı: **kullanıcının yazdığı kelimeyi
 verme.** Cambridge English Vocabulary Profile seviye etiketlerini esas al.
+
+> ⛔ **Bu kelimeler günün tamamını taşır.** Okuma parçası, yazma görevi,
+> konuşma görevi ve kartlar **aynı** kelimeleri döver — kullanıcının kuralı:
+> *"kartlar yeni kelime öğrenme demek; reading, speaking beraber bir temada
+> gelsin, o başka bir şey anlatmasın."* O gün bir şey öğret, dört yerden
+> göster. Kartlara başka kelime, metne başka kelime koyma.
 
 ### `passage` — özgün, devam eden hikâye
 
@@ -443,7 +494,10 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
   yoksa çeşitlendiriyor mu? Cümle yapıları tekdüze mi?
 - **creativity** — risk alıyor mu? Bilmediği yapıyı denemiş mi, yoksa güvenli
   bölgede mi kalmış? Denerken hata yapmak, denememekten iyidir — buna göre puanla.
-- **verdict** — tek cümlelik Türkçe gerekçe.
+- **verdict** — Türkçe gerekçe. **Günün kelimelerine mutlaka değin**
+  (`wordProgress`): hangileri oturdu, hangisi oturmadı. Örnek: *"Yazın belirgin
+  toparlandı; notice ve end up oturdu, exhausted telaffuzda takıldı, onu yarın
+  tekrar dolaştıracağım."*
 
 > ⚠️ **ABARTMA.** Puanlar günden güne 10-15 puandan fazla oynamamalı. Bir iyi
 > metin "artık B2 oldun" demek değildir. Tek örnekten büyük sonuç çıkarma.

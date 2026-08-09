@@ -15,6 +15,7 @@ import {
   measureProgress,
 } from '../core/progress';
 import { toISODate } from '../core/srs';
+import { getTodayWordProgress, type WordProgress } from '../db/selectors';
 import type {
   AppData,
   ContentSuggestion,
@@ -74,6 +75,15 @@ export interface OutboxPayload {
     /** Son çalışmadan bu yana geçen gün */
     daysSinceLastSession: number;
   };
+  /**
+   * Bugünün ders kelimelerinin kart durumu.
+   *
+   * Kartlar üç aşamadan geçiyor: tanıma → yazma → telaffuz. Bu liste her
+   * kelimenin hangi basamakta olduğunu ve telaffuzu geçip geçmediğini
+   * söyler. Öğretmen buna bakıp **günün kelimeleri oturdu mu** kararını
+   * verir; uygulama bu kararı vermez, sadece ölçer.
+   */
+  wordProgress: WordProgress[];
   /** Öğretmenin mevcut planı — varsa üzerine karar verir */
   currentPlan?: TeacherPlan;
 }
@@ -273,6 +283,7 @@ export function buildOutbox(data: AppData): OutboxPayload {
       momentumDelta: momentum.delta,
       daysSinceLastSession: daysSince,
     },
+    wordProgress: getTodayWordProgress(data, today),
     currentPlan: data.plan,
   };
 }

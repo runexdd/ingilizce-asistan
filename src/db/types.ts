@@ -6,6 +6,7 @@
  * ileride gerçek uygulamada tamamen aynı şekilde çalışması.
  */
 
+import type { CardStage } from '../core/cardcheck';
 import type { LevelSizing } from '../core/level';
 
 export interface Profile {
@@ -48,6 +49,22 @@ export interface Card {
   dueDate: string;
   createdAt: string;
   sourceTaskId: string | null;
+
+  /**
+   * Öğrenme basamağı: 1 tanıma (şıklar) → 2 yazma → 3 telaffuz.
+   * Doğru cevapta yükselir, yanlışta düşer. Eski kartlarda yoksa 1 sayılır.
+   */
+  stage?: CardStage;
+  /** Öğretmenin aynı derecede doğru saydığı diğer cevaplar */
+  accepted?: string[];
+  /** Kartın geldiği günün teması — kart dizilimi temaya göre sıralanıyor */
+  theme?: string;
+  /** Son cevabın sonucu — öğretmene giden rapora giriyor */
+  lastResult?: 'correct' | 'close' | 'wrong';
+  /** Son çalışıldığı tarih, 'YYYY-MM-DD' */
+  lastReviewedAt?: string;
+  /** Telaffuz aşaması ilk kez geçildiğinde damgalanır, 'YYYY-MM-DD' */
+  spokenOkAt?: string;
 }
 
 export interface ErrorCategory {
@@ -66,7 +83,13 @@ export interface Feedback {
   corrected: string;
   natural: string;
   errors: FeedbackError[];
-  newWords: Array<{ word: string; meaning: string; example?: string }>;
+  newWords: Array<{
+    word: string;
+    meaning: string;
+    example?: string;
+    /** Aynı derecede doğru sayılacak diğer cevaplar — kart denetiminde kullanılır */
+    accepted?: string[];
+  }>;
 }
 
 export type TaskKind =
@@ -139,7 +162,12 @@ export interface DailyLesson {
   /** Günün teması: "seyahat", "iş görüşmesi", "sağlık"... */
   theme: string;
   /** Bugün öğrenilecek kelimeler — tüm görevler bunlara bağlanır */
-  targetWords: Array<{ word: string; meaning: string; example?: string }>;
+  targetWords: Array<{
+    word: string;
+    meaning: string;
+    example?: string;
+    accepted?: string[];
+  }>;
   /** Öğretmenin yazdığı okuma parçası (özgün, seviyeye uygun) */
   passage?: {
     title: string;

@@ -26,6 +26,83 @@ export function getDueCards(
   return limit ? due.slice(0, limit) : due;
 }
 
+/**
+ * Bugünün çalışma sırası.
+ *
+ * İki ürün kuralını birden uygular:
+ *
+ * 1. **Gün tek tema, tek kelime seti.** Okuma, yazma ve konuşma neyi
+ *    dövüyorsa kartlar da onu dövsün diye günün ders kelimeleri listenin
+ *    başına alınır. Araya alakasız eski kelimeler girerse günün konusu
+ *    dağılır.
+ * 2. **Yeni kelime sayısına öğretmen karar verir.** Bir günde tanıştırılacak
+ *    *yeni* kelime `dailyNewWords` ile sınırlanır; hiç görülmemiş kartların
+ *    fazlası bugün gösterilmez, yarına kalır. Eski kartların tekrarı bu
+ *    sınıra dahil değildir — onlar zaten öğrenilmeye başlanmış kelimeler.
+ */
+export function getStudyQueue(
+  data: AppData,
+  dailyNewWords: number,
+  today: Date = new Date()
+): Card[] {
+  const due = getDueCards(data, today);
+  const todayISO = toISODate(today);
+  const lessonWords = new Set(
+    data.lesson?.date === todayISO
+      ? data.lesson.targetWords.map((w) => w.word.trim().toLowerCase())
+      : []
+  );
+
+  const isNew = (card: Card) => card.repetitions === 0 && !card.lastReviewedAt;
+  const isTodays = (card: Card) => lessonWords.has(card.word.trim().toLowerCase());
+
+  // Günün kelimeleri yeni kelime kotasını önce doldursun
+  const fresh = due
+    .filter(isNew)
+    .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
+    .slice(0, Math.max(0, dailyNewWords));
+
+  const review = due.filter((c) => !isNew(c));
+
+  // Sıralama: günün kelimeleri → diğer yeniler → tekrarlar
+  return [...fresh.filter(isTodays), ...fresh.filter((c) => !isTodays(c)), ...review];
+}
+
+/**
+ * Bugünün ders kelimelerinin durumu — öğretmene giden rapor.
+ * Öğretmen buna bakıp "bugünün kelimeleri oturdu mu" kararını verir.
+ */
+export interface WordProgress {
+  word: string;
+  /** 1 tanıma · 2 yazma · 3 telaffuz */
+  stage: number;
+  /** Telaffuz aşamasını geçti mi */
+  spoken: boolean;
+  lastResult?: 'correct' | 'close' | 'wrong';
+  /** Bugün hiç çalışıldı mı */
+  studiedToday: boolean;
+}
+
+export function getTodayWordProgress(
+  data: AppData,
+  today: Date = new Date()
+): WordProgress[] {
+  const iso = toISODate(today);
+  if (!data.lesson || data.lesson.date !== iso) return [];
+
+  return data.lesson.targetWords.map((target) => {
+    const key = target.word.trim().toLowerCase();
+    const card = data.cards.find((c) => c.word.trim().toLowerCase() === key);
+    return {
+      word: target.word,
+      stage: card?.stage ?? 1,
+      spoken: !!card?.spokenOkAt,
+      lastResult: card?.lastResult,
+      studiedToday: card?.lastReviewedAt === iso,
+    };
+  });
+}
+
 export function getDueCardCount(data: AppData, today: Date = new Date()): number {
   const iso = toISODate(today);
   return data.cards.reduce((n, c) => (c.dueDate <= iso ? n + 1 : n), 0);
