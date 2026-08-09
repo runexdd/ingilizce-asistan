@@ -17,8 +17,260 @@
 
 import { dayNumber } from './reading';
 import { LEVELS, levelIndex, type CEFRLevel } from './level';
+import type { Tastes } from '../db/types';
 
 type PromptSet = Record<CEFRLevel, string[]>;
+
+/* ==================================================== zevke bağlı görevler
+ *
+ * ⚠️ **Kullanıcının şikâyeti:** *"Her hobiyi değiştirdiğimde farklı bir
+ * speaking yaptırması lazım ama orası hâlâ kopuk."* Haklıydı: aşağıdaki genel
+ * havuzlar yalnızca **seviye** ve **gün numarası** ile seçiliyordu; zevkler
+ * denkleme hiç girmiyordu. Spor seçen de seyahat seçen de aynı soruyu
+ * alıyordu.
+ *
+ * Çözümün şekli önemli: her zevk için altı seviyelik ayrı liste yazmak 60+
+ * blok eder ve biri eklenince ötekiler unutulur. Onun yerine iki parça
+ * çarpılıyor:
+ *
+ *   **konu** (zevkten gelir)  ×  **çerçeve** (seviyeden gelir)
+ *
+ * Konu *neyi* konuşacağını, çerçeve *ne kadar derin* konuşacağını belirliyor.
+ * Böylece yeni bir hobi eklemek tek satır, yeni bir seviye eklemek tek çerçeve.
+ */
+
+interface TasteTopic {
+  /** `src/core/tastes.ts` içindeki anahtarlar */
+  keys: string[];
+  /**
+   * İngilizce konu öbekleri. Çerçeveye gömüldüğü için **isim öbeği** olmalı:
+   * "Describe ___", "Tell me about ___" cümlesine oturmalı.
+   */
+  subjects: string[];
+  /** Türkçe ipucunda geçen alan adı */
+  labelTR: string;
+}
+
+const TASTE_TOPICS: TasteTopic[] = [
+  {
+    keys: ['spor', 'futbol', 'basketbol', 'tenis', 'motor', 'dovus'],
+    labelTR: 'spor',
+    subjects: [
+      'the last match you watched',
+      'a player or athlete you admire',
+      'the moment your team disappointed you',
+      'why people care so much about sport',
+      'a game you will never forget',
+    ],
+  },
+  {
+    keys: ['fitness', 'kosu', 'dogaspor'],
+    labelTR: 'spor ve hareket',
+    subjects: [
+      'your training routine this week',
+      'the hardest workout you have done',
+      'how exercise changes your mood',
+      'a goal you are working towards',
+    ],
+  },
+  {
+    keys: ['muzik', 'rock', 'metal', 'pop', 'rap', 'caz', 'klasik', 'blues', 'country', 'elektronik', 'akustik'],
+    labelTR: 'müzik',
+    subjects: [
+      'the last song you listened to',
+      'a band or artist you keep coming back to',
+      'the kind of music you cannot stand',
+      'a song that reminds you of a place',
+      'what you listen to when you need to focus',
+    ],
+  },
+  {
+    keys: ['dizi', 'superhero', 'scifi', 'polisiye', 'komedi', 'dram', 'animasyon', 'tarihi', 'fantastik', 'gerilim'],
+    labelTR: 'dizi ve film',
+    subjects: [
+      'the last episode you watched',
+      'a character you find interesting',
+      'a story with an ending you did not expect',
+      'a series everyone likes but you do not',
+      'what makes you keep watching a show',
+    ],
+  },
+  {
+    keys: ['belgesel', 'bilim', 'tarih'],
+    labelTR: 'belgesel ve bilim',
+    subjects: [
+      'something you learned recently that surprised you',
+      'a documentary or article you would recommend',
+      'a period in history you would like to see',
+      'a scientific idea you find hard to believe',
+    ],
+  },
+  {
+    keys: ['oyun'],
+    labelTR: 'oyun',
+    subjects: [
+      'the game you are playing at the moment',
+      'a level or match that took you many tries',
+      'why some games stay interesting for years',
+      'playing alone or with friends',
+    ],
+  },
+  {
+    keys: ['teknoloji'],
+    labelTR: 'teknoloji',
+    subjects: [
+      'an app you use every day',
+      'a piece of technology that disappointed you',
+      'how your phone changes the way you spend time',
+      'something you would like technology to solve',
+    ],
+  },
+  {
+    keys: ['yemek'],
+    labelTR: 'yemek',
+    subjects: [
+      'the last meal you cooked',
+      'a dish from your childhood',
+      'a restaurant you would go back to',
+      'food you tried once and never again',
+    ],
+  },
+  {
+    keys: ['seyahat', 'seyahat-ortam'],
+    labelTR: 'seyahat',
+    subjects: [
+      'the last place you travelled to',
+      'a journey that did not go as planned',
+      'a city you would like to live in for a year',
+      'what you always pack and never use',
+      'travelling alone or with other people',
+    ],
+  },
+  {
+    keys: ['kitap', 'akademik'],
+    labelTR: 'kitap',
+    subjects: [
+      'the last book you read',
+      'a book you started and never finished',
+      'a writer whose style you enjoy',
+      'reading on paper or on a screen',
+    ],
+  },
+  {
+    keys: ['is', 'ofis'],
+    labelTR: 'iş',
+    subjects: [
+      'the busiest day you had at work this month',
+      'a meeting that could have been an email',
+      'a colleague you learn something from',
+      'the part of your job nobody sees',
+    ],
+  },
+  {
+    keys: ['otomobil'],
+    labelTR: 'otomobil',
+    subjects: [
+      'a car you would buy if money were not a problem',
+      'the longest drive you have done',
+      'how driving in your city feels',
+      'whether people need cars as much as they think',
+    ],
+  },
+  {
+    keys: ['gunluk', 'sosyal'],
+    labelTR: 'günlük hayat',
+    subjects: [
+      'how your day usually starts',
+      'a small thing that improved your week',
+      'something you keep meaning to do',
+      'the last conversation that stayed with you',
+    ],
+  },
+];
+
+/**
+ * Seviye çerçeveleri — **zorluk buradan gelir.**
+ *
+ * A1 tarif eder, A2 anlatır, B1 gerekçelendirir, B2 karşı görüş üretir,
+ * C1 kendi önyargısını sorgular. Aynı konu her seviyede başka bir zihin
+ * işi yaptırıyor; konu değişince görev değişiyor, seviye değişince derinlik.
+ */
+const SPEAK_FRAMES: Record<CEFRLevel, (subject: string) => string> = {
+  A1: (s) => `Talk about ${s}. Use short, simple sentences.`,
+  A2: (s) => `Tell me about ${s}. Say what happened and how you felt.`,
+  B1: (s) => `Talk about ${s}, and explain the reasons behind your opinion.`,
+  B2: (s) => `Talk about ${s}. Then give the strongest reason someone might disagree with you.`,
+  C1: (s) => `Discuss ${s}, and say where your own view might be biased.`,
+  C2: (s) => `Explore ${s}, including the part of your position you find hardest to defend.`,
+};
+
+const WRITE_FRAMES: Record<CEFRLevel, (subject: string) => string> = {
+  A1: (s) => `Write about ${s}.`,
+  A2: (s) => `Write about ${s}. Use past simple and say why.`,
+  B1: (s) => `Write about ${s} and explain what you learned from it.`,
+  B2: (s) => `Write about ${s}. Include one argument against your own view.`,
+  C1: (s) => `Write about ${s}, examining the assumptions behind your position.`,
+  C2: (s) => `Write about ${s}, and reconstruct why a reasonable person might see it differently.`,
+};
+
+/** Kullanıcının bütün zevk seçimleri tek kümede */
+function tasteKeys(tastes: Tastes | undefined): Set<string> {
+  if (!tastes) return new Set();
+  return new Set([
+    ...tastes.areas,
+    ...tastes.music,
+    ...tastes.screen,
+    ...tastes.sports,
+    ...tastes.other,
+  ]);
+}
+
+/** Kullanıcının zevklerine değen konu blokları */
+function topicsFor(tastes: Tastes | undefined): TasteTopic[] {
+  const keys = tasteKeys(tastes);
+  if (keys.size === 0) return [];
+  return TASTE_TOPICS.filter((t) => t.keys.some((k) => keys.has(k)));
+}
+
+/**
+ * Zevke bağlı görev. Zevk seçilmemişse `null` döner ve çağıran genel havuza
+ * düşer — uydurma bir konu vermektense tarafsız bir soru daha dürüst.
+ *
+ * `salt` konuşma ile yazmanın aynı gün aynı konuyu sormasını engelliyor.
+ */
+function tasteBased(
+  frames: Record<CEFRLevel, (s: string) => string>,
+  level: string,
+  tastes: Tastes | undefined,
+  today: Date,
+  salt: number
+): string | null {
+  const topics = topicsFor(tastes);
+  if (topics.length === 0) return null;
+
+  const day = dayNumber(today) + salt;
+  /**
+   * Konu bloğu gün gün dönüyor: iki hobi seçen biri bir gün spor, ertesi gün
+   * müzik konuşuyor. Blok içindeki özne de dönüyor ki aynı hobide takılıp
+   * kalmasın.
+   */
+  const topic = topics[day % topics.length];
+  const subject = topic.subjects[Math.floor(day / topics.length) % topic.subjects.length];
+
+  const spec = LEVELS[Math.max(0, Math.min(LEVELS.length - 1, levelIndex(level)))];
+  return frames[spec](subject);
+}
+
+/** Görevin hangi ilgi alanından geldiği — ekranda "· spor" diye gösteriliyor */
+export function taskTopicLabel(
+  tastes: Tastes | undefined,
+  today: Date = new Date(),
+  salt = 0
+): string | null {
+  const topics = topicsFor(tastes);
+  if (topics.length === 0) return null;
+  return topics[(dayNumber(today) + salt) % topics.length].labelTR;
+}
 
 /** Konuşma görevleri — süre çağıran tarafta `LEVEL_SPEC`'ten eklenir. */
 const SPEAKING: PromptSet = {
@@ -167,10 +419,24 @@ function pick(set: PromptSet, level: string, today: Date, salt: number): string 
   return pool[(dayNumber(today) + salt) % pool.length];
 }
 
-export function speakingPromptFor(level: string, today: Date = new Date()): string {
-  return pick(SPEAKING, level, today, 0);
+/**
+ * Günün konuşma görevi.
+ *
+ * **Önce zevk, sonra genel havuz.** Kullanıcı hobisini değiştirdiği anda görev
+ * de değişiyor; hiç zevk seçmemişse eski genel havuz devrede kalıyor.
+ */
+export function speakingPromptFor(
+  level: string,
+  today: Date = new Date(),
+  tastes?: Tastes
+): string {
+  return tasteBased(SPEAK_FRAMES, level, tastes, today, 0) ?? pick(SPEAKING, level, today, 0);
 }
 
-export function writingPromptFor(level: string, today: Date = new Date()): string {
-  return pick(WRITING, level, today, 3);
+export function writingPromptFor(
+  level: string,
+  today: Date = new Date(),
+  tastes?: Tastes
+): string {
+  return tasteBased(WRITE_FRAMES, level, tastes, today, 3) ?? pick(WRITING, level, today, 3);
 }

@@ -15,7 +15,11 @@ import {
   describeWritingSize,
   specOf,
 } from '../../src/core/level';
-import { speakingPromptFor, writingPromptFor } from '../../src/core/prompts';
+import {
+  speakingPromptFor,
+  taskTopicLabel,
+  writingPromptFor,
+} from '../../src/core/prompts';
 import { pickPassage, type ReadingPassage } from '../../src/core/reading';
 import { speakEnglish, stopSpeaking } from '../../src/core/speech';
 import {
@@ -88,7 +92,7 @@ function WritingTask({ long }: { long: boolean }) {
    */
   const prompt =
     suggested?.prompt ??
-    `${writingPromptFor(level)} ${
+    `${writingPromptFor(level, new Date(), data.profile.tastes)} ${
       long
         ? `Write at least ${fallbackSentences} sentences.`
         : `Write ${minSentences}-${maxSentences} sentences.`
@@ -502,9 +506,20 @@ function SpeakingTask() {
   const suggested = isContentStale(data)
     ? undefined
     : data.suggestedTasks.find((t) => t.kind === 'speaking');
+  /**
+   * Konu kullanıcının **zevklerinden** geliyor: spor seçiliyse maç, seyahat
+   * seçiliyse yolculuk konuşuluyor. Zevkler denkleme hiç girmiyordu ve
+   * kullanıcı haklı olarak *"her hobiyi değiştirdiğimde farklı bir speaking
+   * yaptırması lazım ama orası hâlâ kopuk"* dedi.
+   */
   const prompt =
     suggested?.prompt ??
-    `Talk for about ${spec.speakingSeconds} seconds. ${speakingPromptFor(level)}`;
+    `Talk for about ${spec.speakingSeconds} seconds. ${speakingPromptFor(
+      level,
+      new Date(),
+      data.profile.tastes
+    )}`;
+  const topicLabel = taskTopicLabel(data.profile.tastes);
 
   const todayWords = useTodayWords();
 
@@ -587,7 +602,13 @@ function SpeakingTask() {
         keyboardShouldPersistTaps="handled"
       >
         <PromptBox
-          label="Konuşma görevi"
+          label={
+            // Konunun hangi hobiden geldiği görünsün — bağlantı görünmezse
+            // kullanıcı "yine aynı şeyi soruyor" hissine kapılıyor
+            topicLabel && !suggested
+              ? `Konuşma görevi · ${topicLabel}`
+              : 'Konuşma görevi'
+          }
           text={prompt}
           focus={suggested?.targetError}
           size={`${level} · ${describeSpeakingSize(level, data.plan?.sizing)} · ${spec.structures}`}

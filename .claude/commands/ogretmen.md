@@ -597,6 +597,28 @@ Her görev `{ kind, prompt, targetError }`. `prompt` İngilizce yazılır.
 > ..." de, konuşma promptunda aynı kelimeleri iste, içerik önerisini aynı
 > temadan seç. Gün boyunca aynı kelimeler dönsün.
 
+### ⚠️ Konuşma görevinin **konusu `profile.tastes`'ten gelir**
+
+Kullanıcının şikâyeti aynen: *"Her hobiyi değiştirdiğimde farklı bir speaking
+yaptırması lazım ama orası hâlâ kopuk."*
+
+Konu zevkten, **zorluk seviyeden** gelir. Aynı kişiye spor seçiliyken maç,
+seyahat seçiliyken yolculuk konuşturulur; seviye yükseldikçe aynı konu daha
+derin sorulur (A2 anlatır, B1 gerekçelendirir, B2 karşı argüman üretir).
+
+- `tastes` doluysa **genel bir soru sorma.** *"What did you do today?"* herkese
+  uyar, kimseyi konuşturmaz.
+- Aynı gün yazma ve konuşma **farklı konudan** olsun; ikisi aynı şeyi sorarsa
+  gün tekrara düşer.
+- Zevk seçilmemişse nötr bir soru sor ve `note` içinde Ayarlar → Zevklerim'i
+  doldurmasını iste.
+
+> Uygulama senkron yapılmamış günlerde bunu kendisi yapıyor
+> (`src/core/prompts.ts`: konu × seviye çerçevesi). Senin görevin ondan
+> **daha iyisini** yazmak — çünkü sen kullanıcının dünkü hatalarını ve
+> bugünkü kelimelerini de biliyorsun. Zevki görmezden gelirsen uygulamanın
+> yedeğinden geri düşersin.
+
 ### ⛔ Görev listesi kuralları
 
 1. **Günde TEK yazma görevi.** `writing-micro` ve `writing-long` aynı gün
