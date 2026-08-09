@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   LayoutChangeEvent,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -21,6 +22,14 @@ import { colors, radius, spacing } from './theme';
  *
  * Konumlandırma için kelimeler tek tek ölçülebilir olmalı, bu yüzden metin
  * sarmalayan bir satır içinde ayrı ayrı bileşenler olarak çiziliyor.
+ *
+ * İki şey bilinçli:
+ *
+ * 1. **Kalıplar tek parça.** Sözlükte "every evening" varsa, "every"ye de
+ *    "evening"e de dokunulsa kalıbın anlamı çıkar. Kelimeleri ayrı ayrı
+ *    çevirmek ("her", "akşam") bağlamı bozuyordu.
+ * 2. **Cümle de çevriliyor.** Kelimenin tek başına karşılığı yanıltabilir;
+ *    panelde cümlenin çevirisi de görünür, kullanıcı kelimeyi yerinde görür.
  */
 
 interface Props {
@@ -37,11 +46,14 @@ interface Box {
   height: number;
 }
 
-const POPUP_WIDTH = 270;
+const POPUP_WIDTH = 290;
+const POPUP_MAX_HEIGHT = 300;
 const GAP = 8;
 
 export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  /** Vurgulanan kelime aralığı — kalıp seçilirse kalıbın tamamı sarıya döner */
+  const [span, setSpan] = useState<[number, number] | null>(null);
   const [anchor, setAnchor] = useState<Box | null>(null);
   const [result, setResult] = useState<LookupResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -51,27 +63,93 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
 
   const layouts = useRef<Record<number, Box>>({});
 
-  const glossaryMap = useMemo(() => {
-    const map: Record<string, string> = {};
+  /**
+   * Metin iki listeye ayrılır:
+   *   items — ekrana çizilecek parçalar (kelime veya paragraf boşluğu)
+   *   words — sadece kelimeler; kalıp eşleştirme ve cümle bulma bunun üstünde
+   */
+  const { items, words, sentences } = useMemo(() => {
+    const items: Array<{ type: 'word'; text: string; wi: number } | { type: 'break' }> =
+      [];
+    const words: Array<{ norm: string; sentence: number }> = [];
+    const sentences: string[] = [];
+
+    let buffer: string[] = [];
+    let sentenceIndex = 0;
+
+    const closeSentence = () => {
+      if (buffer.length === 0) return;
+      sentences[sentenceIndex] = buffer.join(' ');
+      buffer = [];
+      sentenceIndex += 1;
+    };
+
+    text.split(/\n\s*\n/).forEach((paragraph, pi) => {
+      if (pi > 0) {
+        closeSentence();
+        items.push({ type: 'break' });
+      }
+      for (const raw of paragraph.split(/\s+/)) {
+        if (!raw) continue;
+        items.push({ type: 'word', text: raw, wi: words.length });
+        words.push({ norm: normalizeWord(raw), sentence: sentenceIndex });
+        buffer.push(raw);
+        // Cümle sonu: nokta/soru/ünlem — tırnak veya parantez kapanışı olabilir
+        if (/[.!?]["'’)\]]?$/.test(raw)) closeSentence();
+      }
+    });
+    closeSentence();
+
+    return { items, words, sentences };
+  }, [text]);
+
+  /** Sözlükteki çok kelimeli kalıplar, uzundan kısaya (en uzun eşleşme kazanır) */
+  const phrases = useMemo(
+    () =>
+      glossary
+        .filter((e) => e.word.trim().includes(' '))
+        .map((e) => ({ entry: e, parts: e.word.trim().split(/\s+/).map(normalizeWord) }))
+        .sort((a, b) => b.parts.length - a.parts.length),
+    [glossary]
+  );
+
+  /** Tek kelimelik sözlük girdileri */
+  const singles = useMemo(() => {
+    const map: Record<string, GlossaryEntry> = {};
     for (const entry of glossary) {
-      map[normalizeWord(entry.word)] = entry.meaning;
-      const first = normalizeWord(entry.word.split(/\s+/)[0]);
-      if (!map[first]) map[first] = entry.meaning;
+      if (entry.word.trim().includes(' ')) continue;
+      map[normalizeWord(entry.word)] = entry;
     }
     return map;
   }, [glossary]);
 
+  /** Kelimenin bulunduğu yerde bir kalıp geçiyor mu? Geçiyorsa kalıp kazanır. */
+  const findEntry = useCallback(
+    (wi: number): { entry: GlossaryEntry; span: [number, number] } | null => {
+      for (const { entry, parts } of phrases) {
+        for (let offset = 0; offset < parts.length; offset++) {
+          const start = wi - offset;
+          if (start < 0 || start + parts.length > words.length) continue;
+          const fits = parts.every((p, k) => words[start + k].norm === p);
+          if (fits) return { entry, span: [start, start + parts.length - 1] };
+        }
+      }
+      const single = singles[words[wi]?.norm ?? ''];
+      return single ? { entry: single, span: [wi, wi] } : null;
+    },
+    [phrases, singles, words]
+  );
+
+  /** Renklendirme: sözlükteki kelimeler ve kalıpların TÜM parçaları işaretlenir */
   const marked = useMemo(() => {
     const gloss = new Set<string>();
     const target = new Set<string>();
     for (const entry of glossary) {
-      for (const k of [
-        normalizeWord(entry.word),
-        normalizeWord(entry.word.split(/\s+/)[0]),
-      ]) {
-        if (!k) continue;
-        gloss.add(k);
-        if (entry.isTarget) target.add(k);
+      for (const part of entry.word.trim().split(/\s+/)) {
+        const key = normalizeWord(part);
+        if (!key) continue;
+        gloss.add(key);
+        if (entry.isTarget) target.add(key);
       }
     }
     return { gloss, target };
@@ -82,39 +160,32 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
     [knownWords]
   );
 
-  /** Paragraf sonları tam genişlik boşlukla temsil edilir, kelimeler ayrı ayrı. */
-  const items = useMemo(() => {
-    const out: Array<{ type: 'word'; text: string } | { type: 'break' }> = [];
-    const paragraphs = text.split(/\n\s*\n/);
-    paragraphs.forEach((paragraph, pi) => {
-      if (pi > 0) out.push({ type: 'break' });
-      for (const w of paragraph.split(/\s+/)) {
-        if (w) out.push({ type: 'word', text: w });
-      }
-    });
-    return out;
-  }, [text]);
-
   const handleTap = useCallback(
-    async (raw: string, index: number) => {
+    async (raw: string, itemIndex: number, wi: number) => {
       const word = normalizeWord(raw);
       if (!word) return;
 
-      const box = layouts.current[index];
-      setAnchor(box ?? null);
-      setSelected(word);
+      const match = findEntry(wi);
+      const label = match ? match.entry.word : word;
+
+      setAnchor(layouts.current[itemIndex] ?? null);
+      setSelected(label);
+      setSpan(match?.span ?? [wi, wi]);
       setJustAdded(null);
       setResult(null);
       setLoading(true);
-      const found = await lookupWord(word, glossaryMap);
+
+      const sentence = sentences[words[wi]?.sentence ?? -1];
+      const found = await lookupWord(word, { entry: match?.entry, sentence });
       setResult(found);
       setLoading(false);
     },
-    [glossaryMap]
+    [findEntry, sentences, words]
   );
 
   function close() {
     setSelected(null);
+    setSpan(null);
     setResult(null);
     setAnchor(null);
   }
@@ -133,7 +204,9 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
     return { left, top, width, showBelow };
   }, [anchor, containerWidth, popupHeight]);
 
-  const alreadyKnown = selected ? known.has(selected) : false;
+  /** Karta eklenecek metin — kalıp eşleştiyse kalıbın kendisi */
+  const cardWord = result?.phrase ?? result?.word ?? selected ?? '';
+  const alreadyKnown = known.has(normalizeWord(cardWord));
 
   return (
     <View
@@ -144,10 +217,10 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
         {items.map((item, i) => {
           if (item.type === 'break') return <View key={i} style={styles.paragraphBreak} />;
 
-          const key = normalizeWord(item.text);
+          const key = words[item.wi].norm;
           const isTarget = marked.target.has(key);
           const isGloss = marked.gloss.has(key);
-          const isSelected = selected === key && key !== '';
+          const isSelected = !!span && item.wi >= span[0] && item.wi <= span[1];
 
           return (
             <Pressable
@@ -155,7 +228,7 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
               onLayout={(e) => {
                 layouts.current[i] = e.nativeEvent.layout;
               }}
-              onPress={() => void handleTap(item.text, i)}
+              onPress={() => void handleTap(item.text, i, item.wi)}
               style={styles.wordWrap}
             >
               <Text
@@ -174,8 +247,8 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
       </View>
 
       <Text style={styles.hint}>
-        Herhangi bir kelimeye dokun — anlamı hemen üstünde açılır. Renkli olanlar
-        bugünün kelimeleri.
+        Herhangi bir kelimeye dokun — anlamı, cümledeki karşılığı ve örnekleri
+        hemen üstünde açılır. Renkli olanlar bugünün kelimeleri.
       </Text>
 
       {selected && popupStyle && (
@@ -217,11 +290,59 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
             )}
 
             {!loading && result && (
-              <>
+              <ScrollView
+                style={styles.popupBody}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
                 {result.meaning ? (
                   <Text style={styles.meaning}>{result.meaning}</Text>
                 ) : (
-                  <Text style={styles.notFound}>Karşılığı bulunamadı.</Text>
+                  <Text style={styles.notFound}>
+                    Türkçe karşılığı bulunamadı — yanlış bir karşılık göstermektense
+                    boş bırakıyoruz.
+                  </Text>
+                )}
+
+                {result.baseForm && result.baseForm !== normalizeWord(selected) && (
+                  <Text style={styles.baseForm}>sözlük hâli: {result.baseForm}</Text>
+                )}
+
+                {/* Bağlam: kelimeyi cümlenin içinde görmek, tek başına
+                    çevirisinden daha güvenilirdir */}
+                {result.sentenceTr && (
+                  <View style={styles.block}>
+                    <Text style={styles.blockTitle}>Cümlede</Text>
+                    <Text style={styles.sentence}>{result.sentenceTr}</Text>
+                  </View>
+                )}
+
+                {result.otherMeanings && result.otherMeanings.length > 0 && (
+                  <View style={styles.block}>
+                    <Text style={styles.blockTitle}>Diğer yaygın anlamları</Text>
+                    <Text style={styles.senses}>{result.otherMeanings.join(' · ')}</Text>
+                  </View>
+                )}
+
+                {result.synonym && (
+                  <View style={styles.block}>
+                    <Text style={styles.blockTitle}>Eş anlamlısı</Text>
+                    <Text style={styles.synonym}>{result.synonym}</Text>
+                  </View>
+                )}
+
+                {result.examples && result.examples.length > 0 && (
+                  <View style={styles.block}>
+                    <Text style={styles.blockTitle}>Örnekler</Text>
+                    {result.examples.slice(0, 3).map((ex) => (
+                      <Pressable
+                        key={ex}
+                        onPress={() => void speakEnglish(ex, { rate: 0.85 })}
+                      >
+                        <Text style={styles.example}>• {ex}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                 )}
 
                 {result.definition && (
@@ -234,30 +355,30 @@ export function TappableText({ text, glossary, onAddCard, knownWords = [] }: Pro
                   <Pressable
                     style={[
                       styles.addButton,
-                      (alreadyKnown || justAdded === selected) && styles.addButtonDone,
+                      (alreadyKnown || justAdded === cardWord) && styles.addButtonDone,
                     ]}
-                    disabled={alreadyKnown || justAdded === selected}
+                    disabled={alreadyKnown || justAdded === cardWord}
                     onPress={() => {
-                      onAddCard(selected, result.meaning!);
-                      setJustAdded(selected);
+                      onAddCard(cardWord, result.meaning!);
+                      setJustAdded(cardWord);
                     }}
                   >
                     <Text
                       style={[
                         styles.addButtonText,
-                        (alreadyKnown || justAdded === selected) &&
+                        (alreadyKnown || justAdded === cardWord) &&
                           styles.addButtonTextDone,
                       ]}
                     >
                       {alreadyKnown
                         ? '✓ Kartlarında'
-                        : justAdded === selected
+                        : justAdded === cardWord
                           ? '✓ Eklendi'
                           : '+ Karta ekle'}
                     </Text>
                   </Pressable>
                 )}
-              </>
+              </ScrollView>
             )}
           </View>
         </>
@@ -301,6 +422,7 @@ const styles = StyleSheet.create({
   },
   popup: {
     position: 'absolute',
+    maxHeight: POPUP_MAX_HEIGHT,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.accent,
@@ -313,6 +435,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
+  popupBody: { marginTop: spacing.xs },
   popupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   popupWord: { fontSize: 17, fontWeight: '700', color: colors.text, flex: 1 },
   iconButton: { paddingHorizontal: spacing.xs + 2 },
@@ -329,21 +452,37 @@ const styles = StyleSheet.create({
   meaning: {
     fontSize: 16,
     color: colors.accent,
-    marginTop: spacing.xs + 2,
+    marginTop: spacing.xs,
     lineHeight: 22,
     fontWeight: '600',
   },
-  definition: {
-    fontSize: 13,
+  baseForm: { fontSize: 12, color: colors.muted, marginTop: 2 },
+
+  block: { marginTop: spacing.sm },
+  blockTitle: {
+    fontSize: 11,
+    fontWeight: '700',
     color: colors.muted,
-    marginTop: spacing.xs + 2,
-    lineHeight: 18,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  sentence: { fontSize: 13, color: colors.text, lineHeight: 19 },
+  senses: { fontSize: 13, color: colors.text, lineHeight: 19 },
+  synonym: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  example: { fontSize: 13, color: colors.text, lineHeight: 19, marginBottom: 2 },
+  definition: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: spacing.sm,
+    lineHeight: 17,
     fontStyle: 'italic',
   },
   notFound: { fontSize: 13, color: colors.muted, marginTop: spacing.xs + 2 },
 
   addButton: {
     marginTop: spacing.sm,
+    marginBottom: spacing.xs,
     backgroundColor: colors.accent,
     borderRadius: radius.sm,
     paddingVertical: spacing.sm,

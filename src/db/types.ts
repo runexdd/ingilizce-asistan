@@ -89,13 +89,30 @@ export interface SessionRecord {
   tasksCompleted: number;
 }
 
-/** Metinde dokunulabilir kelime — anlamı anında görünür, karta eklenebilir */
+/**
+ * Metinde dokunulabilir kelime — anlamı anında görünür, karta eklenebilir.
+ *
+ * Bu sözlük **en güvenilir kaynaktır**: metni yazan öğretmen doldurduğu için
+ * kelimenin o cümledeki anlamını bilir. İnternetten gelen karşılık bağlamı
+ * bilmez; bu yüzden sözlük her zaman öncelikli.
+ *
+ * `word` çok kelimeli olabilir ("every evening"). O zaman kalıbın içindeki
+ * herhangi bir kelimeye dokunulduğunda kalıbın anlamı çıkar — tek tek "her" ve
+ * "akşam" göstermek yanıltıcı olurdu.
+ */
 export interface GlossaryEntry {
   /** Metinde geçtiği hâli (küçük harfe indirgenmiş eşleşme yapılır) */
   word: string;
+  /** Bu metindeki anlamı — bağlama uygun tek karşılık */
   meaning: string;
   /** Bu kelime bugünün hedef kelimelerinden mi */
   isTarget?: boolean;
+  /** Kelimenin bugün de yaygın olan diğer anlamları (eskimiş olanlar değil) */
+  senses?: string[];
+  /** Yaygın kullanılan bir eş anlamlısı */
+  synonym?: string;
+  /** 2-3 kısa örnek cümle — kelime bu anlamda kullanılmış olmalı */
+  examples?: string[];
 }
 
 /**

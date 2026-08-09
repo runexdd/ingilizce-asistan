@@ -107,7 +107,10 @@ ezberlemekten kalıcıdır. Diğer uygulamalarda olmayan şey budur.
     "title": "...", "chapter": 3, "text": "...",
     "questions": [{ "question": "...", "options": ["..."], "answerIndex": 0 }]
   },
-  "glossary": [{ "word": "...", "meaning": "...", "isTarget": true }]
+  "glossary": [
+    { "word": "...", "meaning": "...", "isTarget": true,
+      "senses": ["..."], "synonym": "...", "examples": ["...", "..."] }
+  ]
 }
 ```
 
@@ -132,15 +135,56 @@ verme.** Cambridge English Vocabulary Profile seviye etiketlerini esas al.
 - **Hedef kelimeler metinde GEÇSİN.** Zorlama olmasın, doğal aksın.
 - 2-3 anlama sorusu ekle.
 
-### `glossary` — dokun-çevir sözlüğü
+### `glossary` — dokun-çevir sözlüğü ⚠️ **kapsam genişledi**
 
-Metindeki **zor kelimelerin** listesi. Kullanıcı metinde o kelimeye dokununca
-anlamı çıkar ve tek dokunuşla kartlarına ekler.
+Kullanıcı metinde bir kelimeye dokununca anlamı çıkar. Uygulama sözlükte
+bulamadığı kelimeyi internetten arar; **internet bağlamı bilmez**, bu yüzden
+sözlük ne kadar genişse anlam o kadar doğru olur.
 
-- Hedef kelimeleri `isTarget: true` ile işaretle (metinde vurgulanır)
-- `word` alanı metinde **geçtiği hâlde** olsun (çekimli hâli varsa onu yaz)
-- `knownWords` içindekileri sözlüğe koyma — zaten biliyor
-- 8-15 kelime yeterli; her kelimeyi işaretleme, metin okunmaz hâle gelir
+> **Neden değişti:** Eskiden sözlük 8-15 kelimeydi, gerisi çevrimiçi aramaya
+> düşüyordu ve orada bağlamdan kopuk, hatta yanlış karşılıklar çıkıyordu
+> (kullanıcı "evening" kelimesine dokunup "yapınız" gördü). Kaynak da
+> düzeltildi ama **asıl çözüm senin sözlüğün**: metni sen yazdın, kelimenin o
+> cümlede ne demek olduğunu bir tek sen biliyorsun.
+
+**İki katman doldur:**
+
+**Katman 1 — kapsam (her içerik kelimesi).** Metindeki her isim, fiil, sıfat ve
+zarf için tek satır: `{ "word": "...", "meaning": "..." }`. Kısa tut, tek
+karşılık yaz. Şunları atla: `the/a/an/and/or/but/is/are/was/of/to/in/on` gibi
+işlevsel kelimeler, özel isimler, sayılar ve `knownWords` içindekiler.
+150-250 kelimelik bir bölümde bu genelde 40-70 satır eder — az yer tutar,
+karşılığındaki doğruluk buna değer.
+
+**Katman 2 — derinlik (sadece hak edenler).** Şu üç gruba `senses`, `synonym`
+ve `examples` de ekle:
+- `isTarget: true` olan günün kelimeleri (hepsine, istisnasız)
+- Çok anlamlı kelimeler — *run, get, set, take, hold, book, right, mean, leave*
+- Kullanıcının önceki yazılarında yanlış kullandığı kelimeler
+
+```json
+{ "word": "notice", "meaning": "fark etmek", "isTarget": true,
+  "senses": ["duyuru, ilan (isim)", "ihbar/bildirim süresi (isim)"],
+  "synonym": "realize",
+  "examples": ["I didn't notice the time.", "She noticed a small mistake."] }
+```
+
+- **`senses`** — bugün de yaygın olan diğer anlamlar, **en fazla 3**. Artık
+  kullanılmayan eski anlamları yazma; kullanıcı bunu özellikle istemedi.
+  Sözcük türünü parantezle belirt, ayırt edici olan o.
+- **`synonym`** — gerçekten yerine kullanılabilen, **yaygın** bir kelime. Zorlama
+  eş anlamlı yazma; yoksa alanı hiç koyma.
+- **`examples`** — 2-3 kısa cümle. Kelime **`meaning`'deki anlamda** kullanılmış
+  olmalı; başka anlamda örnek vermek en sık yapılan hatadır.
+
+**Kalıpları tek parça yaz.** `word` alanı çok kelimeli olabilir ve olmalı:
+`"every evening"`, `"end up"`, `"be worth it"`, `"on time"`. Uygulama kalıbı
+tanır; kalıbın herhangi bir kelimesine dokunulduğunda kalıbın anlamını gösterir.
+"every" ve "evening"i ayrı ayrı yazarsan kullanıcı "her" + "akşam" görür ve
+kalıbı kaçırır — **öbek fiiller ve kalıplar mutlaka tek girdi olacak.**
+
+`word` alanı metinde **geçtiği hâlde** olsun (`ended up` metinde öyle geçiyorsa
+öyle yaz), çünkü eşleştirme metin üstünden yapılıyor.
 
 ### ⚠️ ÇİFT KONTROL — zorunlu
 
@@ -148,11 +192,15 @@ Kullanıcı bunu özellikle istedi. Paketi göndermeden önce **iki kez** kontro
 
 1. **Anlam doğru mu?** Her Türkçe karşılığı tek tek gözden geçir. Yaklaşık
    değil, doğru olsun. Emin değilsen o kelimeyi çıkar.
-2. **Bağlam doğru mu?** Örnek cümlede ve metinde kelime **gerçekten o anlamda**
-   mı kullanılmış? Çok anlamlı kelimelerde (bkz. *run*, *get*, *set*) hangi
-   anlamı öğrettiğin net olsun.
-3. **Metin ile sözlük tutuyor mu?** `glossary` içindeki her kelime metinde
-   gerçekten geçiyor mu? Geçmeyen kelime sözlükte durmamalı.
+2. **Bağlam doğru mu?** `meaning`, kelimenin **bu metindeki** anlamı mı? Sözlük
+   sırasındaki ilk anlamı değil, cümlede taşıdığı anlamı yaz. (*"She left the
+   room"* → "ayrılmak"; *"left hand"* → "sol". İkisi aynı kelime, aynı değil.)
+3. **Örnekler tutuyor mu?** Her `example` içindeki kelime `meaning`'deki anlamda
+   mı kullanılmış? Değilse örneği değiştir.
+4. **Metin ile sözlük tutuyor mu?** `glossary` içindeki her kelime/kalıp metinde
+   gerçekten geçiyor mu? Geçmeyen girdi sözlükte durmamalı.
+5. **Kalıplar bütün mü?** Metindeki öbek fiiller ve kalıplar tek girdi olarak mı
+   yazılmış, yoksa parçalanmış mı?
 
 Uydurma anlam veya zorlama bağlam, öğrenciyi yanlış öğretir — hiç öğretmemekten
 kötüdür.
