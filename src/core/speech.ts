@@ -71,11 +71,23 @@ async function bestVoice(): Promise<string | undefined> {
   return cached ?? undefined;
 }
 
+/**
+ * Kullanıcının Ayarlar'dan seçtiği ses.
+ * Seçilmişse otomatik seçimin önüne geçer — kulak, algoritmadan iyi karar verir.
+ */
+let preferredVoice: string | undefined;
+
+export function setPreferredVoice(id: string | undefined) {
+  preferredVoice = id || undefined;
+}
+
 export interface SpeakOptions {
   onDone?: () => void;
   onError?: () => void;
   /** Konuşma hızı — 1.0 normal. Öğrenciler için biraz yavaş iyidir. */
   rate?: number;
+  /** Bu çağrı için sesi zorla (ses denemede kullanılır) */
+  voice?: string;
 }
 
 /**
@@ -83,7 +95,7 @@ export interface SpeakOptions {
  * Zaten konuşuyorsa durdurur (aynı butona basınca dursun).
  */
 export async function speakEnglish(text: string, options: SpeakOptions = {}) {
-  const voice = await bestVoice();
+  const voice = options.voice ?? preferredVoice ?? (await bestVoice());
   Speech.speak(text, {
     language: 'en-US',
     voice,
@@ -100,21 +112,35 @@ export function stopSpeaking() {
   void Speech.stop();
 }
 
-/** Tanılama için: cihazdaki İngilizce seslerin listesi. */
-export async function listEnglishVoices(): Promise<
-  Array<{ name: string; quality: string; language: string; score: number }>
-> {
+export interface VoiceOption {
+  id: string;
+  name: string;
+  quality: string;
+  language: string;
+  score: number;
+  /** Algoritmanın en iyi bulduğu ses mi */
+  recommended: boolean;
+}
+
+/** Ayarlar ekranındaki ses seçici için: cihazdaki İngilizce sesler, iyiden kötüye. */
+export async function listEnglishVoices(): Promise<VoiceOption[]> {
   try {
     const voices = await Speech.getAvailableVoicesAsync();
-    return voices
+    const list = voices
       .filter((v) => (v.language ?? '').toLowerCase().startsWith('en'))
       .map((v) => ({
+        id: v.identifier ?? v.name ?? '',
         name: v.name ?? v.identifier ?? '?',
         quality: String(v.quality ?? '-'),
         language: v.language ?? '-',
         score: rankVoice(v),
+        recommended: false,
       }))
+      .filter((v) => v.id)
       .sort((a, b) => b.score - a.score);
+
+    if (list.length > 0) list[0].recommended = true;
+    return list;
   } catch {
     return [];
   }

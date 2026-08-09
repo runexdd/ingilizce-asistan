@@ -19,6 +19,11 @@ export interface Profile {
   weakestSkill?: string;
   /** Sınavın yapıldığı tarih, 'YYYY-MM-DD' — aylık yeniden ölçüm için */
   placementDate?: string;
+  /**
+   * Kullanıcının seçtiği seslendirme sesi (cihaz ses kimliği).
+   * Boşsa uygulama en iyi puanlı sesi otomatik seçer.
+   */
+  voiceId?: string;
 }
 
 export interface Card {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,6 +10,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SKILL_LABELS, type QuestionSkill } from '../../src/core/placement';
+import {
+  listEnglishVoices,
+  setPreferredVoice,
+  speakEnglish,
+  type VoiceOption,
+} from '../../src/core/speech';
 import {
   applyInbox,
   markTasksSynced,
@@ -41,7 +47,14 @@ export default function SettingsScreen() {
   const profile = data.profile;
   const sync = data.sync;
 
+  const [voices, setVoices] = useState<VoiceOption[] | null>(null);
   const [tokenInput, setTokenInput] = useState('');
+
+  // Cihazdaki sesleri bir kez yükle; kaydedilmiş tercihi motora bildir
+  useEffect(() => {
+    setPreferredVoice(profile.voiceId);
+    void listEnglishVoices().then(setVoices);
+  }, [profile.voiceId]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(
     null
@@ -291,6 +304,68 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {/* --------------------------------------------------------- ses */}
+      <Text style={styles.groupTitle}>Seslendirme</Text>
+      <View style={styles.group}>
+        {voices === null ? (
+          <View style={styles.row}>
+            <Text style={styles.hint}>Sesler yükleniyor…</Text>
+          </View>
+        ) : voices.length === 0 ? (
+          <View style={styles.row}>
+            <Text style={styles.hint}>
+              Bu cihazda İngilizce ses bulunamadı. Tarayıcı seslendirmeyi
+              desteklemiyor olabilir.
+            </Text>
+          </View>
+        ) : (
+          voices.map((v, i) => {
+            const active = (profile.voiceId ?? '') === v.id;
+            return (
+              <View
+                key={v.id}
+                style={[styles.row, i < voices.length - 1 && styles.rowDivider]}
+              >
+                <Pressable
+                  style={styles.rowMain}
+                  onPress={() => {
+                    update((current) => updateProfile(current, { voiceId: v.id }));
+                    setPreferredVoice(v.id);
+                  }}
+                >
+                  <Text style={[styles.label, active && styles.labelActive]}>
+                    {active ? '● ' : '○ '}
+                    {v.name}
+                  </Text>
+                  <Text style={styles.hint}>
+                    {v.language}
+                    {v.quality && v.quality !== '-' ? ` · ${v.quality}` : ''}
+                    {v.recommended ? ' · önerilen' : ''}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.testButton}
+                  onPress={() =>
+                    void speakEnglish(
+                      'This is how I sound. Tap a word to see its meaning.',
+                      { voice: v.id }
+                    )
+                  }
+                >
+                  <Text style={styles.testButtonText}>🔊 Dinle</Text>
+                </Pressable>
+              </View>
+            );
+          })
+        )}
+      </View>
+      <Text style={styles.note}>
+        Sesleri dinleyip beğendiğini seç. iPhone'da daha doğal sesler için:
+        Ayarlar → Erişilebilirlik → Sözlü İçerik → Sesler → English → bir ses
+        indir. Tarayıcı bazı premium seslere erişemeyebilir; o yüzden dinleme
+        pratiğini gerçek içerikten (dizi, podcast) yapmak daha doğru.
+      </Text>
+
       <Text style={styles.build}>
         Sürüm {BUILD}
         {'\n'}Güncelleme gelmediyse: sayfayı aşağı çekip yenile, ya da ana
@@ -354,6 +429,14 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, paddingRight: spacing.sm },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
   label: { fontSize: 16, color: colors.text },
+  labelActive: { color: colors.accent, fontWeight: '700' },
+  testButton: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+  },
+  testButtonText: { fontSize: 13, color: colors.accent, fontWeight: '600' },
   labelAccent: { fontSize: 16, color: colors.accent, fontWeight: '600' },
   hint: { fontSize: 13, color: colors.muted, marginTop: 2, lineHeight: 18 },
   value: { fontSize: 15, color: colors.muted, fontWeight: '500' },
@@ -408,6 +491,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   messageError: { color: '#D92D20' },
+  note: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+    marginTop: spacing.sm,
+  },
   build: {
     fontSize: 12,
     color: colors.muted,
