@@ -82,6 +82,49 @@ export interface SessionRecord {
   tasksCompleted: number;
 }
 
+/**
+ * Öğretmenin (Claude Code) belirlediği plan.
+ *
+ * Uygulama bu planı ÜRETMEZ, sadece uygular ve ölçer. Karar verici öğretmendir;
+ * her senkronda kullanıcının gerçek verisine bakıp burayı günceller.
+ */
+export interface TeacherPlan {
+  /** Hedeflenen bir sonraki seviye */
+  targetLevel: string;
+  /** Öğretmenin tahmini varış tarihi, 'YYYY-MM-DD' */
+  targetDate?: string;
+  /** Bu seviye için kalan tahmini çalışma saati */
+  remainingHours: number;
+  /** Öğretmenin bugün için uygun gördüğü yeni kelime sayısı */
+  dailyNewWords: number;
+  /** Öğretmenin önerdiği günlük dakika */
+  dailyMinutes: number;
+  /** Üzerine gidilecek hata kategorileri */
+  focus: string[];
+  /** Öğretmenin kullanıcıya kısa notu (Türkçe) */
+  note: string;
+  updatedAt: string;
+}
+
+/**
+ * Öğretmenin verdiği günlük puanlar.
+ *
+ * Bunlar makine tarafından hesaplanamaz — insan/öğretmen yargısı gerektirir.
+ * Objektif ölçümler (süreklilik, hacim, hatırlama) uygulamada hesaplanır.
+ */
+export interface TeacherScore {
+  /** 'YYYY-MM-DD' */
+  date: string;
+  /** Dilbilgisi/kullanım doğruluğu 0-100 */
+  accuracy: number;
+  /** Kelime ve yapı zenginliği 0-100 */
+  range: number;
+  /** İfade yaratıcılığı, risk alma 0-100 */
+  creativity: number;
+  /** Öğretmenin kısa gerekçesi (Türkçe) */
+  verdict: string;
+}
+
 /** Claude Code'un önerdiği içerik — video, dizi bölümü, okuma, şarkı */
 export interface ContentSuggestion {
   type: 'youtube' | 'series' | 'reading' | 'song' | 'podcast' | 'task';
@@ -130,6 +173,10 @@ export interface AppData {
   content: ContentSuggestion[];
   /** Son haftalık rapor metni */
   weeklyReport?: string;
+  /** Öğretmenin belirlediği güncel plan */
+  plan?: TeacherPlan;
+  /** Öğretmenin günlük puan geçmişi — ilerleme grafiğinin kaynağı */
+  scores: TeacherScore[];
 }
 
 export const DATA_VERSION = 1;

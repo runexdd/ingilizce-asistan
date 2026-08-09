@@ -79,6 +79,7 @@ export function createInitialData(today: Date = new Date()): AppData {
     sync: {},
     suggestedTasks: [],
     content: [],
+    scores: [],
   };
 }
 
@@ -113,6 +114,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               sync: parsed.sync ?? {},
               suggestedTasks: parsed.suggestedTasks ?? [],
               content: parsed.content ?? [],
+              scores: parsed.scores ?? [],
             };
           }
         }

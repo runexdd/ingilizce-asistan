@@ -192,11 +192,21 @@ export function applyInbox(
     next = updateProfile(next, profilePatch);
   }
 
+  // Öğretmen puanı: aynı güne ikinci puan gelirse üzerine yaz, çoğaltma
+  let scores = next.scores;
+  if (inbox.score) {
+    scores = [...scores.filter((s) => s.date !== inbox.score!.date), inbox.score].sort(
+      (a, b) => (a.date < b.date ? -1 : 1)
+    );
+  }
+
   return {
     ...next,
     suggestedTasks: inbox.nextTasks ?? next.suggestedTasks,
     content: inbox.content ?? next.content,
     weeklyReport: inbox.weeklyReport ?? next.weeklyReport,
+    plan: inbox.plan ?? next.plan,
+    scores,
     sync: { ...next.sync, lastPullAt: new Date().toISOString() },
   };
 }

@@ -9,12 +9,20 @@
  * geçilecekse sadece burası değişir.
  */
 
+import {
+  actualWeeklyMinutes,
+  measureMomentum,
+  measureProgress,
+} from '../core/progress';
+import { toISODate } from '../core/srs';
 import type {
   AppData,
   ContentSuggestion,
   Feedback,
   SuggestedTask,
   TaskRecord,
+  TeacherPlan,
+  TeacherScore,
 } from '../db/types';
 
 const API = 'https://api.github.com';
@@ -47,6 +55,26 @@ export interface OutboxPayload {
   stats: { cardCount: number; dueCardCount: number; streakDays: number };
   /** Zaten kartta olan kelimeler — Claude aynısını tekrar önermesin */
   knownWords: string[];
+  /**
+   * Uygulamanın objektif ölçümleri — öğretmenin karar verirken bakacağı veri.
+   * Bunlar hesaplanır, yorumlanmaz; yorum öğretmenin işi.
+   */
+  measurements: {
+    /** 0-100, son 14 gün */
+    consistency: number;
+    output: number;
+    retention: number;
+    overall: number;
+    /** Son 4 haftanın gerçek haftalık dakikası */
+    weeklyMinutes: number;
+    /** Son 14 gün ile önceki 14 günün farkı */
+    momentum: string;
+    momentumDelta: number;
+    /** Son çalışmadan bu yana geçen gün */
+    daysSinceLastSession: number;
+  };
+  /** Öğretmenin mevcut planı — varsa üzerine karar verir */
+  currentPlan?: TeacherPlan;
 }
 
 /** Claude Code → telefon */
@@ -71,6 +99,13 @@ export interface InboxPayload {
   /** Haftalık rapor metni (pazar günleri) */
   weeklyReport?: string;
   content?: ContentSuggestion[];
+  /**
+   * Öğretmenin güncellediği plan — hedef seviye, kalan saat, günlük kelime
+   * sayısı, odak. Karar verici öğretmendir; uygulama sadece uygular.
+   */
+  plan?: TeacherPlan;
+  /** Öğretmenin bugünkü puanlaması */
+  score?: TeacherScore;
 }
 
 /* ------------------------------------------------------------- yardımcı */
@@ -177,9 +212,20 @@ export function buildOutbox(data: AppData): OutboxPayload {
     (t: TaskRecord) => t.syncState === 'pending' && t.userResponse.trim().length > 0
   );
 
-  const dueCount = data.cards.filter(
-    (c) => c.dueDate <= new Date().toISOString().slice(0, 10)
-  ).length;
+  const today = new Date();
+  const dueCount = data.cards.filter((c) => c.dueDate <= toISODate(today)).length;
+
+  const snapshot = measureProgress(data, today);
+  const momentum = measureMomentum(data, today);
+
+  const lastDate = data.sessions.map((s) => s.date).sort().at(-1);
+  const daysSince = lastDate
+    ? Math.round(
+        (new Date(toISODate(today) + 'T00:00:00').getTime() -
+          new Date(lastDate + 'T00:00:00').getTime()) /
+          86400000
+      )
+    : -1;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -211,6 +257,17 @@ export function buildOutbox(data: AppData): OutboxPayload {
       streakDays: data.sessions.length,
     },
     knownWords: data.cards.map((c) => c.word),
+    measurements: {
+      consistency: snapshot.consistency,
+      output: snapshot.output,
+      retention: snapshot.retention,
+      overall: snapshot.overall,
+      weeklyMinutes: Math.round(actualWeeklyMinutes(data)),
+      momentum: momentum.direction,
+      momentumDelta: momentum.delta,
+      daysSinceLastSession: daysSince,
+    },
+    currentPlan: data.plan,
   };
 }
 
