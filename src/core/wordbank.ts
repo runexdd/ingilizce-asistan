@@ -262,6 +262,19 @@ const A2: Group = {
     ['comfortable', 'rahat', 'These shoes are comfortable.'],
     ['famous', 'ünlü', 'He is a famous singer.'],
   ],
+  /**
+   * A2 seviyesinde de kalıp vardır — hepsi B2 değil. Cetvel bunları
+   * tanımazsa "bilmiyorum" deyip serbest bırakıyor ve seviye denetimi o
+   * kelimelerde hiç çalışmıyor.
+   */
+  kalıp: [
+    ['on time', 'zamanında', 'The train left exactly on time.'],
+    ['at least', 'en azından', 'It will take at least two hours.'],
+    ['of course', 'tabii ki, elbette', 'Of course you can borrow it.'],
+    ['a lot of', 'bir sürü, çok', 'There were a lot of people.'],
+    ['at the moment', 'şu anda', 'She is busy at the moment.'],
+    ['in the end', 'sonunda', 'In the end we stayed at home.'],
+  ],
   zarf: [
     ['enough', 'yeterli, yeterince', 'We do not have enough chairs.'],
     ['together', 'birlikte', 'We studied together last night.'],

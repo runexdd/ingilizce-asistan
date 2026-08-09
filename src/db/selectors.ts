@@ -64,12 +64,21 @@ export function getStudyQueue(
    * sayılıyorlardı — tekrarlar ise süzgeci hiç görmüyordu. Kullanıcı
    * güncellemeden sonra bile *"to be worth it"* görmeye devam etti.
    *
-   * Kart silinmiyor: seviye yükselince kendiliğinden geri gelir. Bugünün ders
-   * kelimeleri ise her hâlükârda geçer — öğretmen bilerek koymuştur, son söz
-   * onundur.
+   * Kart silinmiyor: seviye yükselince kendiliğinden geri gelir.
+   *
+   * ⚠️ **Öğretmenin bugünkü hedef kelimeleri de bu süzgece tabidir.** Önce
+   * "öğretmen bilerek koymuştur, son söz onundur" diye muaf tutulmuşlardı ve
+   * hata üçüncü kez aynı yerden çıktı: gist'teki bugüne ait ders `to notice,
+   * on time, to end up, exhausted, to be worth it` hedefliyordu — beşi de B2,
+   * profil A2. Kullanıcı üst üste *"a2 biri bunu bilemez"* dedi.
+   *
+   * Öğretmenin yetkisi **hangi** kelimeyi seçtiğidir, seviyeyi çiğnemek değil;
+   * seviye kullanıcının kendi ayarıdır. Öğretmen öğrencinin hazır olduğunu
+   * düşünüyorsa yapması gereken şey `levelSuggestion` ile seviyeyi yükseltmek.
+   * Kural zaten `ogretmen.md`'de yazılı; doğru seçtiğinde hiçbir şey elenmez.
    */
   const due = getDueCards(data, today).filter(
-    (c) => isTodays(c) || !isTooHardFor(c.word, data.profile.level)
+    (c) => !isTooHardFor(c.word, data.profile.level)
   );
 
   /**

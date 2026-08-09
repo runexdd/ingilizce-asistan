@@ -161,7 +161,19 @@ export function seedDailyWords(
    * dinamik olarak yeni kelime gelmiyor, hâlâ eski kelime geliyor."*
    */
   const stale = isContentStale(data);
-  if (!stale && data.lesson?.date === iso) return data;
+
+  /**
+   * ⚠️ Burada eskiden "bugüne ait ders varsa hiç karışma" diye erken çıkış
+   * vardı. Öğretmenin dersi **seviyeye uygunsa** doğru davranış buydu, ama
+   * uygun değilse felaketti: gist'teki ders beş B2 kalıbı hedefliyordu, kuyruk
+   * hepsini eliyordu ve ekranda tek kelime kalmıyordu — kullanıcı ya eski
+   * kelimeleri ya boş ekran görüyordu.
+   *
+   * Erken çıkış kaldırıldı; karar kotaya bırakıldı. Öğretmenin gönderdiği
+   * kelimeler zaten kart olarak duruyor: seviyeye uygun olanlar `waiting`
+   * sayılıp kotayı doldurur ve hiçbir şey tohumlanmaz (normal gün). Hepsi
+   * elenirse kota boş kalır ve seviyeye uygun kelimeler devreye girer.
+   */
 
   /**
    * Seviye değişimi günü **sıfırlar.**
