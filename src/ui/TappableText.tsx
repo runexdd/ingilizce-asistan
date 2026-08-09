@@ -407,11 +407,20 @@ export function TappableText({
 }
 
 const styles = StyleSheet.create({
-  container: { position: 'relative' },
+  /**
+   * Katman sırası bilinçli:
+   *   container 20 — panelin, metinden SONRA gelen "Okudum" butonunun üstünde
+   *                  kalmasını sağlar; yoksa buton paneli kesiyordu
+   *   backdrop   1 — boşluğa dokununca kapansın diye, ama kelimelerin ALTINDA
+   *   wordWrap   2 — panel açıkken başka kelimeye dokunmak doğrudan çalışsın;
+   *                  perde üstte kalınca ikinci bir dokunuş gerekiyordu
+   *   popup     30 — hepsinin üstünde
+   */
+  container: { position: 'relative', zIndex: 20 },
   flow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' },
   paragraphBreak: { width: '100%', height: spacing.md },
 
-  wordWrap: { marginRight: 6 },
+  wordWrap: { marginRight: 6, zIndex: 2 },
   word: { fontSize: 17, color: colors.text, lineHeight: 30 },
   glossWord: {
     color: colors.accent,
@@ -438,9 +447,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 1,
   },
   popup: {
     position: 'absolute',
+    zIndex: 30,
     maxHeight: POPUP_MAX_HEIGHT,
     backgroundColor: colors.card,
     borderWidth: 1,

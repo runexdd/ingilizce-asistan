@@ -182,7 +182,23 @@ export function filterExamples(
     return stems.some((s) => lower.includes(s));
   });
 
-  return kept.length > 0 ? kept.slice(0, 3) : undefined;
+  /**
+   * Kelimenin **metindeki hâlini** içeren örnekler öne alınır.
+   *
+   * "tried" için sözlük hem *I tried to rollerblade* hem *Repeated failures try
+   * one's patience* döndürüyor; ikincisi kelimeyi bambaşka anlamda kullanıyor.
+   * Aynı çekimi içeren örnek, aranan anlamda olma ihtimali belirgin yüksek.
+   */
+  const surface = word.toLowerCase();
+  const ranked = [...kept].sort((a, b) => {
+    const aHit = a.toLowerCase().includes(surface) ? 0 : 1;
+    const bHit = b.toLowerCase().includes(surface) ? 0 : 1;
+    return aHit - bHit;
+  });
+
+  // İnternetten gelen örneklerde 2 tane yeter; öğretmenin yazdıkları zaten
+  // ayrı yoldan geliyor ve 3 tanesi de gösteriliyor.
+  return ranked.length > 0 ? ranked.slice(0, 2) : undefined;
 }
 
 /** Panelde gösterilecek "diğer anlamlar" listesi. */
