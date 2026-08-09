@@ -21,6 +21,7 @@ import {
   type WriteDirection,
 } from '../../src/core/cardcheck';
 import { specOf } from '../../src/core/level';
+import { MAX_ATTEMPTS, supportFor } from '../../src/core/scramble';
 import { speakEnglish } from '../../src/core/speech';
 import {
   describeSpeechError,
@@ -29,7 +30,12 @@ import {
   type SpeechInputHandle,
 } from '../../src/core/speechInput';
 import { describeInterval } from '../../src/core/srs';
-import { answerCard, markCardTaught, recordSession } from '../../src/db/mutations';
+import {
+  answerCard,
+  markCardTaught,
+  recordSession,
+  seedDailyWords,
+} from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
 import { getStudyQueue } from '../../src/db/selectors';
 import type { Card } from '../../src/db/types';
@@ -68,6 +74,18 @@ export default function CardsScreen() {
 
   const [reviewedCount, setReviewedCount] = useState(0);
   const [lastResult, setLastResult] = useState<string | null>(null);
+
+  /**
+   * Öğretmenden bugüne ders gelmediyse günün kelimelerini seviye havuzundan
+   * doldur. Ekran açılışında bir kez: `seedDailyWords` kotayı aşmıyor ama
+   * her render'da veri yazmanın da anlamı yok.
+   */
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    update((d) => seedDailyWords(d, dailyNewWords));
+  }, [dailyNewWords, update]);
 
   if (!card) {
     return (
@@ -358,26 +376,58 @@ function WriteStage({
 
   const [text, setText] = useState('');
   const [verdict, setVerdict] = useState<AnswerVerdict | null>(null);
+  /** Kaç kez yanlış yazıldı — destek bu sayıya göre açılır */
+  const [attempts, setAttempts] = useState(0);
 
   const asked = direction === 'tr-to-en' ? card.meaning : card.word;
   const answer = direction === 'tr-to-en' ? card.word : card.meaning;
 
+  /**
+   * Destek her zaman görünür: harfler baştan karışık verilir, yanlış yaptıkça
+   * baştan harf açılır, son adımda örnek cümle ipucu gelir. Boş kutuya bakıp
+   * pes etmek yerine deneme yapılabilsin diye.
+   */
+  const support = useMemo(
+    () => supportFor(answer, attempts, { example: card.example, seed: card.id }),
+    [answer, attempts, card.example, card.id]
+  );
+
+  function finish(result: AnswerVerdict, note: string, delay: number) {
+    setVerdict(result);
+    setTimeout(() => onAnswer(result, note), delay);
+  }
+
   function submit() {
     if (!text.trim() || verdict) return;
     const result = checkWritten(text, card, direction);
-    setVerdict(result);
-    setTimeout(
-      () =>
-        onAnswer(
-          result,
-          result === 'correct'
-            ? `"${card.word}" → telaffuz aşamasına geçti`
-            : result === 'close'
-              ? `Doğru yazımı: ${answer}`
-              : `"${asked}" → ${answer}`
-        ),
-      result === 'correct' ? 700 : 1800
-    );
+
+    if (result !== 'wrong') {
+      /**
+       * Destekle bulunan cevap tam puan saymaz: harfleri açılmış kelimeyi
+       * yazmak onu bildiğini göstermez. `close` doğru sayılır ama aşama
+       * atlatmaz — kelime yarın yeniden karşına çıkar.
+       */
+      const graded: AnswerVerdict = support.helped ? 'close' : result;
+      finish(
+        graded,
+        graded === 'correct'
+          ? `"${card.word}" → telaffuz aşamasına geçti`
+          : `Yardımla buldun — "${card.word}" yazma aşamasında kalıyor`,
+        graded === 'correct' ? 700 : 1600
+      );
+      return;
+    }
+
+    const next = attempts + 1;
+    setAttempts(next);
+
+    // Hak bitti: doğruyu göster, kelimeyi bir alt basamağa düşür
+    if (next >= MAX_ATTEMPTS) {
+      finish('wrong', `"${asked}" → ${answer}`, 2200);
+      return;
+    }
+
+    setText('');
   }
 
   return (
@@ -389,6 +439,35 @@ function WriteStage({
       <Text style={styles.prompt}>
         {direction === 'tr-to-en' ? 'İngilizcesini yaz' : 'Türkçesini yaz'}
       </Text>
+
+      {support.scrambled && !verdict && (
+        <View style={styles.supportBox}>
+          <Text style={styles.supportLabel}>HARFLER KARIŞIK</Text>
+          <Text style={styles.scrambled}>{support.scrambled}</Text>
+        </View>
+      )}
+
+      {support.revealed && !verdict && (
+        <View style={styles.supportBox}>
+          <Text style={styles.supportLabel}>
+            {attempts === 1 ? 'İLK HARF' : 'İLK İKİ HARF'}
+          </Text>
+          <Text style={styles.revealed}>{support.revealed}</Text>
+        </View>
+      )}
+
+      {support.hint && !verdict && (
+        <View style={styles.supportBox}>
+          <Text style={styles.supportLabel}>İPUCU</Text>
+          <Text style={styles.hintSentence}>{support.hint}</Text>
+        </View>
+      )}
+
+      {attempts > 0 && !verdict && (
+        <Text style={styles.retryNote}>
+          Olmadı, tekrar dene — {MAX_ATTEMPTS - attempts} hakkın var
+        </Text>
+      )}
 
       <TextInput
         style={[
@@ -410,7 +489,10 @@ function WriteStage({
 
       {verdict === 'close' && (
         <Text style={styles.closeNote}>
-          Doğru saydım ama yazımına dikkat: <Text style={styles.bold}>{answer}</Text>
+          {support.helped
+            ? 'Yardımla buldun — bu kelime yarın yine gelecek: '
+            : 'Doğru saydım ama yazımına dikkat: '}
+          <Text style={styles.bold}>{answer}</Text>
         </Text>
       )}
       {verdict === 'wrong' && (
@@ -681,6 +763,49 @@ const styles = StyleSheet.create({
   inputClose: { borderColor: '#F79009', backgroundColor: '#FEF6E7' },
   inputWrong: { borderColor: '#D92D20', backgroundColor: '#FEF0EF' },
 
+  /* Yazma aşamasının destek kutuları — karışık harf, açılan harf, ipucu */
+  supportBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.sm,
+  },
+  supportLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: colors.muted,
+    marginBottom: 4,
+  },
+  scrambled: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  revealed: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: colors.accent,
+    textAlign: 'center',
+  },
+  hintSentence: {
+    fontSize: 15,
+    fontStyle: 'italic',
+    color: colors.text,
+    lineHeight: 22,
+  },
+  retryNote: {
+    fontSize: 13,
+    color: '#B54708',
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
   closeNote: {
     fontSize: 14,
     color: '#B54708',

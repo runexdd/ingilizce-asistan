@@ -182,12 +182,36 @@ Kart yalnızca şunlar için:
 2. **Kullandığı zayıf kelimenin güçlü karşılığı** — "very good" demişse → `impressive`
 3. Seviyesinin bir tık üstünde, **hiç kullanmadığı** kelime
 
-Kaynak: Cambridge English Vocabulary Profile'daki seviye etiketleri esas alınır.
-Kelimeyi önermeden önce kendine sor: *"Bu kelime gerçekten onun seviyesinin
-üstünde mi, yoksa zaten bildiği bir kelime mi?"* Emin değilsen önerme.
+### ⚠️ Kelimenin seviyesini TAHMİN ETME, CETVELE BAK
+
+`src/core/wordbank.ts` seviye etiketli bir kelime havuzu tutar.
+**Kelime seçmeden önce oraya bak.** Havuz hem cetvel hem yedek kaynaktır.
+
+**Kural: kullanıcının seviyesinden en fazla BİR band yukarısı.**
+A2 birine B1 kelimesi öğretilir (hedef budur), **B2 öğretilmez.**
+
+> **Bu kural neden var — gerçekten olan hata:** Kullanıcı profili `A2` iken
+> kartlarına şunlar gönderilmişti: *to be worth it, to figure out, to come up
+> with, to run out of, to keep up with, eventually, exhausted, genius.*
+> Hepsi **B2**. Kullanıcı haklı olarak şikâyet etti: *"seviye a2 ayarladım
+> fakat 'değmek, zahmetine değmek' gelmiş — a2 biri bunu bilemez."*
+>
+> Hata "seviyeye uygun seç" kuralının olmamasından değil, **ölçecek bir şeyin
+> olmamasından** çıktı. Phrasal verb'ler özellikle aldatıcı: kelimelerin her
+> biri A1 ("come", "up", "with") ama kalıp B2'dir. Tek tek harflere bakıp
+> "kolay" diye geçme.
+
+Emin olamadığın, havuzda da bulunmayan kelime için ölçüt: *cümle içinde
+kullanımı bir kural gerektiriyor mu?* Phrasal verb, deyim ve soyut kavramlar
+neredeyse her zaman B1+'tır. Emin değilsen **önerme.**
 
 **Kaç kelime:** `plan.dailyNewWords` kadar (yoksa 5). Bu sayıya sen karar
 veriyorsun — aşağıdaki "Plan" bölümüne bak. Günde 20 kelime kimse tutamaz.
+
+**Sen ders göndermezsen** uygulama günün kelimelerini havuzdan kendi seçer
+(`seedDailyWords`) — kart ekranı boş kalmaz. Ama havuz sadece bir yedektir:
+kişiye özel olan, kullanıcının o hafta gerçekten takıldığı kelimeyi seçen
+sensin. Ders gönderdiğin gün havuz devreye hiç girmez.
 
 ## 3. Zayıf alanı ve seviyeyi belirle
 
@@ -236,7 +260,9 @@ ezberlemekten kalıcıdır. Diğer uygulamalarda olmayan şey budur.
 kart göstermiyor — fazlasını yazarsan kullanıcıya değil, kuyruğa gider.
 
 Kelime seçim kuralları 2. bölümdekiyle aynı: **kullanıcının yazdığı kelimeyi
-verme.** Cambridge English Vocabulary Profile seviye etiketlerini esas al.
+verme** ve **seviyeyi `src/core/wordbank.ts`'ten doğrula** — en fazla bir band
+yukarısı. Kartlara düşen kelime doğrudan buradan geliyor; yanlış seviye
+seçersen kullanıcı onu ilk açtığı ekranda görür.
 
 > ⛔ **Bu kelimeler günün tamamını taşır.** Okuma parçası, yazma görevi,
 > konuşma görevi ve kartlar **aynı** kelimeleri döver — kullanıcının kuralı:

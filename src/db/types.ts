@@ -34,6 +34,15 @@ export interface Profile {
    * olan da robotik duyuluyor. Doğru hız kişiye ve güne göre değişir.
    */
   speechRate?: number;
+  /**
+   * Kullanıcının zevkleri — serbest metin.
+   *
+   * "rock, metal, Metallica, süper kahraman dizileri, bilim kurgu, futbol"
+   * gibi. Öğretmen dizi/film/müzik önerisini ve günün sohbet konusunu buradan
+   * seçer. Kimseye uymayan genel öneri (ders kitabı diyaloğu) yerine
+   * gerçekten açıp izleyeceği/dinleyeceği şey önerilsin diye var.
+   */
+  interests?: string;
 }
 
 export interface Card {
@@ -224,6 +233,20 @@ export interface TeacherPlan {
   /** Öğretmenin kullanıcıya kısa notu (Türkçe) */
   note: string;
   /**
+   * Günün tavsiyesi — Türkçe, somut, tek şey.
+   *
+   * `note` durum bildirir ("iki gündür girmiyorsun"); `advice` **bugün ne
+   * yapacağını** söyler ("bugün konuşurken cümleyi bitirmeden düşünme, önce
+   * söyle sonra düzelt"). Kullanıcının isteği: *"her gün ödev gibi advice
+   * verecek."*
+   */
+  advice?: string;
+  /**
+   * Hedef tarihini bugün neden oynattığının gerekçesi (Türkçe).
+   * Ekranda "78 gün (dün 80)" yazarken altına bu çıkar.
+   */
+  targetReason?: string;
+  /**
    * Görev ölçüleri — seviye tablosundaki varsayılanların üstüne yazar.
    *
    * Seviye tablosu bir başlangıç noktasıdır; son sözü öğretmen söyler.
@@ -265,6 +288,136 @@ export interface ContentSuggestion {
   skill: 'listening' | 'reading' | 'speaking' | 'writing';
   /** Kullanıcı tamamladı mı */
   done?: boolean;
+  /** Tamamlandığı tarih 'YYYY-MM-DD' — istatistiğe ve öğretmene giden kayıt */
+  doneAt?: string;
+  /**
+   * **Neden bu?** Öğretmenin tek cümlelik Türkçe gerekçesi:
+   * *"Metal seviyorsun ve bu şarkının sözleri A2 için fazla ağır değil."*
+   * Gerekçesiz öneri rastgele görünür ve açılmaz.
+   */
+  why?: string;
+  /** Nereden izlenir/dinlenir: "Netflix", "YouTube", "Spotify" */
+  where?: string;
+  /**
+   * İçeriğe **girmeden önce** öğrenilecek kelimeler.
+   *
+   * Anlamadığı bir bölümü izlemek dinleme değil, seyretmedir. Öğretmen 4-6
+   * kelimeyi önden verir; kullanıcı bunları bilerek izleyince içeriğin
+   * yarısından fazlasını anlar.
+   */
+  words?: Array<{ word: string; meaning: string }>;
+  /** İzlerken/dinlerken dikkat edilecek şeyler (Türkçe, 2-3 madde) */
+  watchFor?: string[];
+}
+
+/* -------------------------------------------------- günün sohbeti */
+
+/**
+ * Sohbetin tek turu — öğretmenin bir repliği ve o replikten beklediği cevap.
+ *
+ * ⚠️ **Neden önceden yazılmış:** Telefondaki uygulama canlı yapay zekâ
+ * çağırmıyor (ek ücret istenmiyor). Öğretmen sohbeti bir gün önceden, o günün
+ * dizisini/şarkısını ve kullanıcının seviyesini bilerek yazıyor. Karşılıklı
+ * akış uygulamada yürüyor; derin değerlendirme bir sonraki senkronda geliyor.
+ */
+export interface ConversationTurn {
+  /** Öğretmenin söylediği — İngilizce */
+  say: string;
+  /** Türkçe ipucu: ne sorduğu, nasıl cevaplanacağı */
+  hint?: string;
+  /** Bu turda kullanması beklenen kelimeler */
+  useWords?: string[];
+  /** Beklenen en az kelime sayısı — altında kalırsa `followUp` gelir */
+  minWords?: number;
+  /** Kaçamak/kısa cevap gelirse öğretmenin üsteleyişi — İngilizce */
+  followUp?: string;
+}
+
+/** Öğretmenin o gün için yazdığı sohbet senaryosu */
+export interface ConversationPlan {
+  /** 'YYYY-MM-DD' */
+  date: string;
+  /** Konu: "The Flash 1. sezon 1. bölüm", "Metallica — Lux Æterna" */
+  topic: string;
+  /** Bağlı olduğu içerik önerisinin başlığı — sohbet ondan sonra açılır */
+  contentTitle?: string;
+  /** Türkçe giriş: bugün ne konuşacağız, ne bekleniyor */
+  intro: string;
+  turns: ConversationTurn[];
+  /** Öğretmenin kapanış repliği — İngilizce */
+  closing: string;
+  /** Kapanışta Türkçe not */
+  closingNote?: string;
+  /** Sohbette geçmesi beklenen günün kelimeleri */
+  targetWords: string[];
+}
+
+/** Sohbetteki tek mesaj */
+export interface ConversationMessage {
+  role: 'teacher' | 'user';
+  text: string;
+  /** Kullanıcı mikrofonla mı konuştu, yazdı mı */
+  via?: 'mic' | 'text';
+  /**
+   * Uygulamanın **öğretmen cevap vermeden önce** verdiği Türkçe uyarılar.
+   * Kullanıcının kuralı: *"yazım hatası veya cümle hatalarını öğretmen cevap
+   * vermeden önce Türkçe eksikliklerini söylesin."*
+   */
+  notes?: string[];
+  at: string;
+}
+
+/** Öğretmenin sonradan (senkronda) gelen sohbet değerlendirmesi */
+export interface ConversationReview {
+  /** Türkçe genel değerlendirme */
+  verdict: string;
+  /** Cümle cümle düzeltmeler */
+  corrections: Array<{
+    original: string;
+    corrected: string;
+    /** Ana dili İngilizce olan nasıl derdi */
+    natural?: string;
+    /** Türkçe kural açıklaması */
+    note: string;
+  }>;
+  /** İyi yaptığı somut şey — dürüst olmak kadar görmek de öğretmenin işi */
+  praise?: string;
+  /** Akıcılık puanı 0-100 */
+  fluency?: number;
+}
+
+/** Yapılmış bir sohbetin kaydı */
+export interface ConversationRecord {
+  id: string;
+  date: string;
+  topic: string;
+  messages: ConversationMessage[];
+  /** Planın kaç turu tamamlandı */
+  turnsDone: number;
+  turnsTotal: number;
+  /** Kullanıcının **mikrofonla** cevapladığı tur sayısı */
+  spokenTurns: number;
+  finished: boolean;
+  syncState: 'pending' | 'synced';
+  review?: ConversationReview;
+}
+
+/**
+ * Hedef tarihinin bir günkü hâli.
+ *
+ * Kullanıcının istediği şey: *"çok çalışıyorsun, 80 günde B1 olacaksan artık
+ * 78 güne düşürecek; girmeyene 82 olacak."* Bunu gösterebilmek için dünkü
+ * sayının saklanması gerekiyor — yoksa ekranda sadece bugünkü sayı durur ve
+ * kısalıp kısalmadığı görünmez.
+ */
+export interface TargetPoint {
+  /** 'YYYY-MM-DD' */
+  date: string;
+  /** Hedef seviye */
+  level: string;
+  daysRemaining: number;
+  /** Öğretmenin o günkü tek cümlelik gerekçesi */
+  reason?: string;
 }
 
 /** Claude Code'un ürettiği sıradaki görev */
@@ -307,6 +460,12 @@ export interface AppData {
   lesson?: DailyLesson;
   /** Öğretmenin günlük puan geçmişi — ilerleme grafiğinin kaynağı */
   scores: TeacherScore[];
+  /** Öğretmenin bugün için yazdığı sohbet senaryosu */
+  conversationPlan?: ConversationPlan;
+  /** Yapılmış sohbetlerin kaydı — öğretmene giden ham veri */
+  conversations: ConversationRecord[];
+  /** Hedef tarihinin gün gün geçmişi — "dün 80'di, bugün 78" grafiği */
+  targetHistory: TargetPoint[];
 }
 
 export const DATA_VERSION = 1;

@@ -1,4 +1,5 @@
 import { addDays, toISODate } from '../core/srs';
+import { isTooHardFor } from '../core/wordbank';
 import type { AppData, Card, ErrorCategory } from './types';
 
 /**
@@ -77,8 +78,22 @@ export function getStudyQueue(
   ).length;
   const quota = Math.max(0, dailyNewWords - introducedTodayTotal);
 
+  /**
+   * Seviyenin iki band üstündeki kelimeler sıranın arkasına atılır.
+   *
+   * Kullanıcı A2'yken kartlara "to be worth it", "to come up with" gibi B2
+   * kalıpları düşmüştü: *"a2 biri bunu bilemez"*. Kartlar silinmiyor — belki
+   * öğretmen bilerek koymuştur, belki kullanıcı okurken kendi eklemiştir — ama
+   * günün kotasını onlar yemesin, seviyeye uygun kelimeler öne geçsin.
+   */
+  const tooHard = (card: Card) => isTooHardFor(card.word, data.profile.level);
+
   const fresh = untouched
-    .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
+    .sort(
+      (a, b) =>
+        Number(tooHard(a)) - Number(tooHard(b)) ||
+        Number(isTodays(b)) - Number(isTodays(a))
+    )
     .slice(0, quota);
 
   // Önceki günlerden gelen, tekrarı bugüne düşmüş kartlar

@@ -1,5 +1,6 @@
 import { nextStage, type AnswerVerdict } from '../core/cardcheck';
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
+import { wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
 import type { AppData, Feedback, Profile, SyncState, TaskRecord } from './types';
@@ -75,6 +76,50 @@ export function addCard(
       },
     ],
   };
+}
+
+/**
+ * Öğretmenden ders gelmemişse günün kelimelerini seviye havuzundan doldurur.
+ *
+ * Neden gerekli: kartlara kelime yalnızca öğretmenden ya da okuma ekranında
+ * kelimeye dokunmaktan geliyordu. Senkron yapılmayan bir günde kart ekranı ya
+ * boş kalıyor ya da geçmişten kalan, seviyenin çok üstündeki kelimeleri
+ * döndürüyordu (A2 profilinde "to be worth it", "to come up with").
+ *
+ * İki kural:
+ *  - **Öğretmen konuştuysa karışma.** Bugüne ait ders varsa hiçbir şey yapılmaz;
+ *    kelimeye karar veren hep öğretmendir, burası yedektir.
+ *  - **Kotayı aşma.** Bekleyen ve bugün tanıştırılan kartlar sayılır, eksik
+ *    kadarı eklenir. Böylece fonksiyon kaç kez çağrılırsa çağrılsın aynı sonucu
+ *    verir — her render'da kuyruğa kelime eklenmez.
+ */
+export function seedDailyWords(
+  data: AppData,
+  dailyNewWords: number,
+  today: Date = new Date()
+): AppData {
+  const iso = toISODate(today);
+  if (data.lesson?.date === iso) return data;
+
+  const introducedToday = data.cards.filter((c) => c.introducedAt === iso).length;
+  const waiting = data.cards.filter((c) => !c.introducedAt).length;
+  const need = dailyNewWords - introducedToday - waiting;
+  if (need <= 0) return data;
+
+  const picks = wordsForLevel(
+    data.profile.level,
+    need,
+    data.cards.map((c) => c.word),
+    iso
+  );
+
+  let next = data;
+  for (const w of picks) {
+    next = addCard(next, w.word, w.meaning, w.example, null, today, {
+      theme: `${w.level} kelime çalışması`,
+    });
+  }
+  return next;
 }
 
 /**
