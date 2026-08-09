@@ -72,6 +72,8 @@ export interface TaskRecord {
   status: 'submitted' | 'corrected';
   /** Köprüye gönderildi mi (Faz 4) */
   syncState: 'pending' | 'synced';
+  /** Kullanıcı düzeltmeyi okudu mu — okunduktan sonra ana ekrandaki kart kaybolur */
+  feedbackSeen?: boolean;
   createdAt: string;
 }
 

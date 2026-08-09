@@ -145,6 +145,20 @@ export function applyFeedback(
   return next;
 }
 
+/**
+ * Düzeltmeleri okundu olarak işaretler.
+ * Ana ekrandaki "düzeltme hazır" kartı böylece kaybolur — kalıcı bir rozet
+ * gibi durup kullanıcıyı rahatsız etmez.
+ */
+export function markFeedbackSeen(data: AppData): AppData {
+  return {
+    ...data,
+    tasks: data.tasks.map((t) =>
+      t.feedback !== null && !t.feedbackSeen ? { ...t, feedbackSeen: true } : t
+    ),
+  };
+}
+
 /* ------------------------------------------------------------------ köprü */
 
 export function setSync(data: AppData, patch: Partial<SyncState>): AppData {

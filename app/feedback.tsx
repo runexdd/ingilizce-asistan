@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { markFeedbackSeen } from '../src/db/mutations';
 import { useStore } from '../src/db/store';
 import { colors, radius, spacing } from '../src/ui/theme';
 
@@ -8,7 +9,13 @@ import { colors, radius, spacing } from '../src/ui/theme';
  * Döngünün kullanıcıya görünen kısmı: yaz → düzelt → oku → tekrar yaz.
  */
 export default function FeedbackScreen() {
-  const { data } = useStore();
+  const { data, update } = useStore();
+
+  // Ekran açıldığında düzeltmeler okundu sayılır; ana ekrandaki kart kaybolur.
+  const hasUnseen = data.tasks.some((t) => t.feedback !== null && !t.feedbackSeen);
+  useEffect(() => {
+    if (hasUnseen) update((current) => markFeedbackSeen(current));
+  }, [hasUnseen, update]);
 
   const corrected = useMemo(
     () =>

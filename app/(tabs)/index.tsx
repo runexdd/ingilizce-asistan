@@ -25,7 +25,10 @@ export default function TodayScreen() {
     });
   }, [data, lightMode]);
 
-  const correctedCount = data.tasks.filter((t) => t.feedback !== null).length;
+  // Sadece HENÜZ OKUNMAMIŞ düzeltmeler sayılır; okununca kart kaybolur
+  const correctedCount = data.tasks.filter(
+    (t) => t.feedback !== null && !t.feedbackSeen
+  ).length;
   const isWeekend = plan.dayType === 'weekend';
   const accent = isWeekend ? colors.weekend : colors.accent;
   const accentSoft = isWeekend ? colors.weekendSoft : colors.accentSoft;

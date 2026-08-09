@@ -6,7 +6,7 @@
  */
 
 export type DayType = 'workday' | 'weekend';
-export type TaskKind = 'writing' | 'cards' | 'reading';
+export type TaskKind = 'writing' | 'cards' | 'reading' | 'speaking' | 'listening';
 
 export interface PlanTask {
   id: string;
@@ -99,15 +99,8 @@ export function buildDailyPlan(input: PlannerInput): DailyPlan {
   }
 
   if (dayType === 'workday') {
-    tasks.push({
-      id: 'writing-micro',
-      kind: 'writing',
-      title: 'Kısa yazma',
-      detail: focus
-        ? `3-4 cümle. Bugünün odağı: ${focus}`
-        : '3-4 cümle yaz, düzeltmesi yarın sabah gelecek',
-      estimatedMinutes: Math.max(3, settings.weekdayMinutes - 2),
-    });
+    // Beceriler haftaya dağıtılır — her gün aynı görev bıktırır
+    tasks.push(makeWorkdayTask(input.date.getDay(), settings.weekdayMinutes, focus));
 
     const count = Math.min(input.dueCardCount, WORKDAY_CARD_CAP);
     if (count > 0) {
@@ -138,6 +131,54 @@ export function buildDailyPlan(input: PlannerInput): DailyPlan {
   }
 
   return finalize(dayType, dayLabel, tasks, false);
+}
+
+/**
+ * İş gününün ana görevi — beceriler haftaya dağıtılır.
+ * Pzt yazma · Sal okuma · Çar konuşma · Per yazma · Cum konuşma
+ *
+ * Böylece her gün aynı şeyi yapmıyorsun ve dört beceri de haftada
+ * en az bir kez çalışılıyor.
+ */
+function makeWorkdayTask(
+  weekday: number,
+  minutes: number,
+  focus?: string
+): PlanTask {
+  const duration = Math.max(3, minutes - 2);
+
+  // 1=Pzt, 2=Sal, 3=Çar, 4=Per, 5=Cum
+  if (weekday === 2) {
+    return {
+      id: 'reading',
+      kind: 'reading',
+      title: 'Kısa okuma',
+      detail: 'Seviyene uygun metin + anlama soruları',
+      estimatedMinutes: duration,
+    };
+  }
+
+  if (weekday === 3 || weekday === 5) {
+    return {
+      id: 'speaking',
+      kind: 'speaking',
+      title: 'Konuşma',
+      detail: focus
+        ? `Mikrofonla sesli cevapla. Odak: ${focus}`
+        : 'Klavyedeki mikrofonla sesli cevapla',
+      estimatedMinutes: duration,
+    };
+  }
+
+  return {
+    id: 'writing-micro',
+    kind: 'writing',
+    title: 'Kısa yazma',
+    detail: focus
+      ? `3-4 cümle. Bugünün odağı: ${focus}`
+      : '3-4 cümle yaz, düzeltmesi öğretmenden gelecek',
+    estimatedMinutes: duration,
+  };
 }
 
 function makeCardTask(count: number): PlanTask {
