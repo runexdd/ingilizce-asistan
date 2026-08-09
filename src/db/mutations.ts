@@ -1,6 +1,7 @@
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
+import type { InboxPayload } from '../sync/github';
 import { newId } from './store';
-import type { AppData, Feedback, Profile, TaskRecord } from './types';
+import type { AppData, Feedback, Profile, SyncState, TaskRecord } from './types';
 
 /**
  * Değişiklikler. Hepsi saf fonksiyon: mevcut veriyi almaz-değiştirmez,
@@ -142,6 +143,62 @@ export function applyFeedback(
   }
 
   return next;
+}
+
+/* ------------------------------------------------------------------ köprü */
+
+export function setSync(data: AppData, patch: Partial<SyncState>): AppData {
+  return { ...data, sync: { ...data.sync, ...patch } };
+}
+
+/** Gönderilen görevleri "senkron edildi" olarak işaretler. */
+export function markTasksSynced(data: AppData, taskIds: string[]): AppData {
+  const ids = new Set(taskIds);
+  return {
+    ...data,
+    tasks: data.tasks.map((t) =>
+      ids.has(t.id) ? { ...t, syncState: 'synced' as const } : t
+    ),
+  };
+}
+
+/**
+ * Claude Code'dan gelen paketi uygular:
+ * düzeltmeleri işler, seviyeyi ve zayıf alanı günceller, görev ve içerik
+ * önerilerini kaydeder.
+ *
+ * Seviye ve zayıf alan burada güncellendiği için sistem dinamiktir:
+ * kullanıcı seviyesini kendi seçmiş olsa bile, gerçek performansı zamanla
+ * doğru değeri bulur.
+ */
+export function applyInbox(
+  data: AppData,
+  inbox: InboxPayload,
+  today: Date = new Date()
+): AppData {
+  let next = data;
+
+  for (const item of inbox.feedback ?? []) {
+    const { taskId, ...feedback } = item;
+    next = applyFeedback(next, taskId, feedback as Feedback, today);
+  }
+
+  const profilePatch: Partial<Profile> = {};
+  if (inbox.levelSuggestion) profilePatch.level = inbox.levelSuggestion;
+  if (inbox.weakestSkillSuggestion) {
+    profilePatch.weakestSkill = inbox.weakestSkillSuggestion;
+  }
+  if (Object.keys(profilePatch).length > 0) {
+    next = updateProfile(next, profilePatch);
+  }
+
+  return {
+    ...next,
+    suggestedTasks: inbox.nextTasks ?? next.suggestedTasks,
+    content: inbox.content ?? next.content,
+    weeklyReport: inbox.weeklyReport ?? next.weeklyReport,
+    sync: { ...next.sync, lastPullAt: new Date().toISOString() },
+  };
 }
 
 /** Günlük oturumu kaydeder — seri ve ilerleme grafiği bunu kullanır. */

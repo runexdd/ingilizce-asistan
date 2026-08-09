@@ -82,6 +82,39 @@ export interface SessionRecord {
   tasksCompleted: number;
 }
 
+/** Claude Code'un önerdiği içerik — video, dizi bölümü, okuma, şarkı */
+export interface ContentSuggestion {
+  type: 'youtube' | 'series' | 'reading' | 'song' | 'podcast' | 'task';
+  title: string;
+  /** YouTube video kimliği veya bağlantı */
+  ref?: string;
+  /** "12:00-20:00" gibi zaman aralığı */
+  segment?: string;
+  instruction: string;
+  skill: 'listening' | 'reading' | 'speaking' | 'writing';
+  /** Kullanıcı tamamladı mı */
+  done?: boolean;
+}
+
+/** Claude Code'un ürettiği sıradaki görev */
+export interface SuggestedTask {
+  kind: string;
+  prompt: string;
+  /** Hangi hatayı hedefliyor */
+  targetError?: string;
+}
+
+/** Köprü (GitHub gist) bağlantı durumu */
+export interface SyncState {
+  /** GitHub kişisel erişim jetonu — sadece bu cihazda saklanır */
+  token?: string;
+  /** Senkron gist kimliği — ilk bağlantıda otomatik oluşturulur */
+  gistId?: string;
+  githubLogin?: string;
+  lastPushAt?: string;
+  lastPullAt?: string;
+}
+
 export interface AppData {
   /** Veri şeması sürümü — ileride biçim değişirse taşıma için */
   version: number;
@@ -90,6 +123,13 @@ export interface AppData {
   errors: ErrorCategory[];
   tasks: TaskRecord[];
   sessions: SessionRecord[];
+  sync: SyncState;
+  /** Claude Code'dan gelen sıradaki görevler */
+  suggestedTasks: SuggestedTask[];
+  /** Claude Code'dan gelen içerik önerileri (video, dizi, okuma) */
+  content: ContentSuggestion[];
+  /** Son haftalık rapor metni */
+  weeklyReport?: string;
 }
 
 export const DATA_VERSION = 1;

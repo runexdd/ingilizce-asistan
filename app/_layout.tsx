@@ -16,6 +16,10 @@ export default function RootLayout() {
           name="placement"
           options={{ title: 'Seviye ölçümü', presentation: 'modal' }}
         />
+        <Stack.Screen
+          name="feedback"
+          options={{ title: 'Düzeltmeler', presentation: 'modal' }}
+        />
       </Stack>
     </StoreProvider>
   );

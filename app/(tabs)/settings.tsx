@@ -1,31 +1,146 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SKILL_LABELS, type QuestionSkill } from '../../src/core/placement';
-import { updateProfile } from '../../src/db/mutations';
+import {
+  applyInbox,
+  markTasksSynced,
+  setSync,
+  updateProfile,
+} from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
+import {
+  buildOutbox,
+  ensureGist,
+  pullInbox,
+  pushOutbox,
+  validateToken,
+} from '../../src/sync/github';
 import { colors, radius, spacing } from '../../src/ui/theme';
 
 const MIN_MINUTES = 2;
 const MAX_MINUTES = 90;
 
+const SKILL_TR: Record<string, string> = {
+  ...SKILL_LABELS,
+  production: 'Üretme',
+};
+
 export default function SettingsScreen() {
   const { data, update, reset } = useStore();
   const router = useRouter();
   const profile = data.profile;
+  const sync = data.sync;
+
+  const [tokenInput, setTokenInput] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(
+    null
+  );
 
   function step(key: 'weekdayMinutes' | 'weekendMinutes', delta: number) {
-    const value = Math.min(
-      MAX_MINUTES,
-      Math.max(MIN_MINUTES, profile[key] + delta)
-    );
+    const value = Math.min(MAX_MINUTES, Math.max(MIN_MINUTES, profile[key] + delta));
     update((current) => updateProfile(current, { [key]: value }));
   }
+
+  async function connect() {
+    const token = tokenInput.trim();
+    if (!token) return;
+    setBusy('connect');
+    setMessage(null);
+
+    const check = await validateToken(token);
+    if (!check.ok) {
+      setBusy(null);
+      setMessage({ text: check.error ?? 'Bağlanılamadı.', error: true });
+      return;
+    }
+
+    const gist = await ensureGist(token, sync.gistId);
+    setBusy(null);
+
+    if ('error' in gist) {
+      setMessage({ text: gist.error, error: true });
+      return;
+    }
+
+    update((current) =>
+      setSync(current, {
+        token,
+        gistId: gist.gistId,
+        githubLogin: check.login,
+      })
+    );
+    setTokenInput('');
+    setMessage({ text: `Bağlandı: ${check.login}` });
+  }
+
+  async function syncNow() {
+    if (!sync.token || !sync.gistId) return;
+    setBusy('sync');
+    setMessage(null);
+
+    // 1) Gönder
+    const outbox = buildOutbox(data);
+    const pushed = await pushOutbox(sync.token, sync.gistId, outbox);
+    if ('error' in pushed) {
+      setBusy(null);
+      setMessage({ text: pushed.error, error: true });
+      return;
+    }
+
+    // 2) Al
+    const pulled = await pullInbox(sync.token, sync.gistId);
+    setBusy(null);
+
+    if ('error' in pulled) {
+      setMessage({ text: pulled.error, error: true });
+      return;
+    }
+
+    const sentIds = outbox.pendingTasks.map((t) => t.id);
+    update((current) => {
+      let next = markTasksSynced(current, sentIds);
+      next = setSync(next, { lastPushAt: new Date().toISOString() });
+      if (pulled.inbox) next = applyInbox(next, pulled.inbox);
+      return next;
+    });
+
+    const gotFeedback = pulled.inbox?.feedback?.length ?? 0;
+    setMessage({
+      text: gotFeedback
+        ? `${sentIds.length} görev gönderildi, ${gotFeedback} düzeltme geldi.`
+        : sentIds.length > 0
+          ? `${sentIds.length} görev gönderildi. Bilgisayarda /ogretmen çalıştır.`
+          : 'Gönderilecek yeni görev yok.',
+    });
+  }
+
+  function disconnect() {
+    update((current) => setSync(current, { token: undefined }));
+    setMessage({ text: 'Bağlantı kesildi. Verilerin telefonda duruyor.' });
+  }
+
+  const connected = Boolean(sync.token && sync.gistId);
+  const pendingCount = data.tasks.filter(
+    (t) => t.syncState === 'pending' && t.userResponse.trim()
+  ).length;
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={{ padding: spacing.md }}
+      keyboardShouldPersistTaps="handled"
     >
+      {/* ------------------------------------------------------- tempo */}
       <Text style={styles.groupTitle}>Günlük tempo</Text>
       <View style={styles.group}>
         <Stepper
@@ -42,60 +157,129 @@ export default function SettingsScreen() {
           onStep={(d) => step('weekendMinutes', d)}
         />
       </View>
-      <Text style={styles.note}>
-        Bu süreler Bugün ekranındaki planı doğrudan belirler. Değiştirip Bugün
-        sekmesine dön, planın anında güncellendiğini göreceksin.
-      </Text>
 
+      {/* ------------------------------------------------------ seviye */}
       <Text style={styles.groupTitle}>Seviye</Text>
       <View style={styles.group}>
         <Pressable
           style={[styles.row, styles.rowDivider]}
           onPress={() => router.push('/placement')}
         >
-          <View style={{ flex: 1, paddingRight: spacing.sm }}>
+          <View style={styles.rowMain}>
             <Text style={styles.label}>Mevcut seviye</Text>
             <Text style={styles.hint}>
               {profile.placementDone
-                ? `Ölçüm: ${profile.placementDate ?? '—'} · dokunup tekrar et`
-                : 'Henüz ölçülmedi — dokunup teste başla'}
+                ? `${profile.placementDate ?? '—'} · dokunup değiştir`
+                : 'Dokunup ölç veya kendin seç'}
             </Text>
           </View>
-          <Text style={[styles.value, { color: colors.accent, fontWeight: '700' }]}>
-            {profile.placementDone ? profile.level : 'Ölç →'}
+          <Text style={styles.valueAccent}>
+            {profile.placementDone ? profile.level : 'Belirle →'}
           </Text>
         </Pressable>
 
         <View style={styles.row}>
-          <View style={{ flex: 1, paddingRight: spacing.sm }}>
-            <Text style={styles.label}>En zayıf alan</Text>
-            <Text style={styles.hint}>Görevler buraya ağırlık verir</Text>
+          <View style={styles.rowMain}>
+            <Text style={styles.label}>Zayıf alan</Text>
+            <Text style={styles.hint}>
+              {profile.weakestSkill
+                ? 'Görevler buraya ağırlık veriyor'
+                : 'İlk düzeltmeden sonra gerçek hatalarından belirlenecek'}
+            </Text>
           </View>
           <Text style={styles.value}>
             {profile.weakestSkill
-              ? SKILL_LABELS[profile.weakestSkill as QuestionSkill]
-              : '—'}
+              ? (SKILL_TR[profile.weakestSkill] ??
+                SKILL_LABELS[profile.weakestSkill as QuestionSkill])
+              : 'Henüz yok'}
           </Text>
         </View>
       </View>
 
-      <Text style={styles.groupTitle}>Bağlantı</Text>
+      {/* ------------------------------------------------------- köprü */}
+      <Text style={styles.groupTitle}>Öğretmen bağlantısı</Text>
       <View style={styles.group}>
-        <View style={styles.row}>
-          <View style={{ flex: 1, paddingRight: spacing.sm }}>
-            <Text style={styles.label}>GitHub</Text>
+        {connected ? (
+          <>
+            <View style={[styles.row, styles.rowDivider]}>
+              <View style={styles.rowMain}>
+                <Text style={styles.label}>GitHub</Text>
+                <Text style={styles.hint}>
+                  {sync.githubLogin} · gizli posta kutusu hazır
+                </Text>
+              </View>
+              <Text style={[styles.value, { color: colors.success }]}>Bağlı</Text>
+            </View>
+
+            <Pressable
+              style={[styles.row, styles.rowDivider]}
+              disabled={busy !== null}
+              onPress={() => void syncNow()}
+            >
+              <View style={styles.rowMain}>
+                <Text style={styles.labelAccent}>Şimdi senkronla</Text>
+                <Text style={styles.hint}>
+                  {pendingCount > 0
+                    ? `${pendingCount} görev gönderilmeyi bekliyor`
+                    : 'Gönderilecek yeni görev yok, gelen kutusu kontrol edilir'}
+                </Text>
+              </View>
+              {busy === 'sync' ? (
+                <ActivityIndicator color={colors.accent} />
+              ) : (
+                <Text style={styles.valueAccent}>↕</Text>
+              )}
+            </Pressable>
+
+            <Pressable style={styles.row} onPress={disconnect}>
+              <View style={styles.rowMain}>
+                <Text style={styles.label}>Bağlantıyı kes</Text>
+                <Text style={styles.hint}>Jeton silinir, verilerin kalır</Text>
+              </View>
+            </Pressable>
+          </>
+        ) : (
+          <View style={styles.connectBox}>
             <Text style={styles.hint}>
-              Faz 4: düzeltmelerin buradan gidip gelecek
+              GitHub kişisel erişim jetonunu yapıştır ({'"'}gist{'"'} izinli).
+              Jeton sadece bu cihazda saklanır, hiçbir yere gönderilmez.
             </Text>
+            <TextInput
+              style={styles.input}
+              value={tokenInput}
+              onChangeText={setTokenInput}
+              placeholder="ghp_..."
+              placeholderTextColor={colors.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <Pressable
+              style={[styles.button, (!tokenInput.trim() || busy) && styles.disabled]}
+              disabled={!tokenInput.trim() || busy !== null}
+              onPress={() => void connect()}
+            >
+              {busy === 'connect' ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Bağlan</Text>
+              )}
+            </Pressable>
           </View>
-          <Text style={styles.value}>Bağlı değil</Text>
-        </View>
+        )}
       </View>
 
+      {message && (
+        <Text style={[styles.message, message.error && styles.messageError]}>
+          {message.text}
+        </Text>
+      )}
+
+      {/* ---------------------------------------------------- tehlikeli */}
       <Text style={styles.groupTitle}>Tehlikeli bölge</Text>
       <View style={styles.group}>
         <Pressable style={styles.row} onPress={reset}>
-          <View style={{ flex: 1, paddingRight: spacing.sm }}>
+          <View style={styles.rowMain}>
             <Text style={[styles.label, { color: '#D92D20' }]}>
               Tüm verileri sıfırla
             </Text>
@@ -124,7 +308,7 @@ function Stepper({
 }) {
   return (
     <View style={[styles.row, divider && styles.rowDivider]}>
-      <View style={{ flex: 1, paddingRight: spacing.sm }}>
+      <View style={styles.rowMain}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.hint}>{hint}</Text>
       </View>
@@ -160,10 +344,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   row: { flexDirection: 'row', alignItems: 'center', padding: spacing.md },
+  rowMain: { flex: 1, paddingRight: spacing.sm },
   rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
   label: { fontSize: 16, color: colors.text },
-  hint: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  labelAccent: { fontSize: 16, color: colors.accent, fontWeight: '600' },
+  hint: { fontSize: 13, color: colors.muted, marginTop: 2, lineHeight: 18 },
   value: { fontSize: 15, color: colors.muted, fontWeight: '500' },
+  valueAccent: { fontSize: 15, color: colors.accent, fontWeight: '700' },
+
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   stepButton: {
     width: 32,
@@ -186,10 +374,31 @@ const styles = StyleSheet.create({
     minWidth: 48,
     textAlign: 'center',
   },
-  note: {
-    fontSize: 13,
-    color: colors.muted,
-    lineHeight: 19,
-    marginTop: spacing.sm,
+
+  connectBox: { padding: spacing.md, gap: spacing.sm + 2 },
+  input: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.sm + 4,
+    fontSize: 15,
+    color: colors.text,
   },
+  button: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 4,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  disabled: { opacity: 0.4 },
+
+  message: {
+    fontSize: 14,
+    color: colors.success,
+    marginTop: spacing.sm + 2,
+    lineHeight: 20,
+  },
+  messageError: { color: '#D92D20' },
 });

@@ -76,6 +76,9 @@ export function createInitialData(today: Date = new Date()): AppData {
     errors: [],
     tasks: [],
     sessions: [],
+    sync: {},
+    suggestedTasks: [],
+    content: [],
   };
 }
 
@@ -104,7 +107,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (raw) {
           const parsed = JSON.parse(raw) as AppData;
           if (parsed && parsed.version === DATA_VERSION && parsed.profile) {
-            loaded = parsed;
+            // Sonradan eklenen alanlar eski kayıtlarda olmayabilir
+            loaded = {
+              ...parsed,
+              sync: parsed.sync ?? {},
+              suggestedTasks: parsed.suggestedTasks ?? [],
+              content: parsed.content ?? [],
+            };
           }
         }
       } catch {

@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# köprü jetonu — ASLA depoya girmemeli
+sync-token.txt
+
 # typescript
 *.tsbuildinfo
 

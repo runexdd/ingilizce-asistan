@@ -25,6 +25,7 @@ export default function TodayScreen() {
     });
   }, [data, lightMode]);
 
+  const correctedCount = data.tasks.filter((t) => t.feedback !== null).length;
   const isWeekend = plan.dayType === 'weekend';
   const accent = isWeekend ? colors.weekend : colors.accent;
   const accentSoft = isWeekend ? colors.weekendSoft : colors.accentSoft;
@@ -54,6 +55,23 @@ export default function TodayScreen() {
             içerik senin seviyene göre seçilecek.
           </Text>
           <Text style={styles.placementCta}>Teste başla →</Text>
+        </Pressable>
+      )}
+
+      {correctedCount > 0 && (
+        <Pressable
+          style={({ pressed }) => [styles.feedbackCard, pressed && styles.taskPressed]}
+          onPress={() => router.push('/feedback')}
+        >
+          <View style={styles.taskMain}>
+            <Text style={styles.feedbackTitle}>
+              ✍️ {correctedCount} düzeltme hazır
+            </Text>
+            <Text style={styles.feedbackText}>
+              Öğretmenin yazdıklarını düzeltti — oku, hatalarını gör
+            </Text>
+          </View>
+          <Text style={styles.feedbackArrow}>→</Text>
         </Pressable>
       )}
 
@@ -137,6 +155,23 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: spacing.xs + 2,
   },
+  feedbackCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  feedbackTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  feedbackText: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    opacity: 0.9,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  feedbackArrow: { fontSize: 20, color: '#FFFFFF', fontWeight: '700' },
   placementCta: {
     fontSize: 15,
     fontWeight: '700',
