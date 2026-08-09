@@ -7,6 +7,19 @@ yazıları düzeltip, bir sonraki günün programını hazırlayacaksın.
 
 ## 0. Gelen paketi al
 
+### ⚠️ ÖNCE BAK: proje kökünde `.outbox.json` var mı?
+
+**Varsa nöbetçi kipindesin.** Onu `Read` ile oku ve **hiçbir kabuk komutu
+çalıştırma** — ne `pull` ne `push`. Ağ işini nöbetçi (`scripts/watch.mjs`)
+yapıyor: paketi o çekti, cevabını da o gönderecek. Senin tek yapacağın,
+sonucu proje kökündeki **`.inbox-draft.json`** dosyasına yazmak (§7).
+
+> Neden böyle: arka planda çalışan oturum izin isteyemiyor, soran kimse yok.
+> Kabuk komutu denendi ve üç kez sessizce tıkandı — "bitti" yazıldı ama gist'e
+> hiçbir şey yazılmamıştı. Dosya okuyup dosya yazmak her zaman çalışıyor.
+
+### `.outbox.json` yoksa: elle çalıştırılıyorsun
+
 Proje kökünden:
 
 ```
@@ -22,11 +35,35 @@ Jeton hatası verirse: *"`sync-token.txt` dosyasına GitHub jetonunu yapıştır
 
 Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 
+### ⚠️ Bu komut çoğu zaman **arka planda, sen yokken** çalışıyor
+
+`scripts/watch.mjs` (nöbetçi) gist'i dinliyor; telefondan yeni bir şey
+geldiğini görünce seni `claude -p "/ogretmen"` ile sessiz kipte başlatıyor.
+Kullanıcı hiçbir şeye basmıyor — isteği buydu: *"bilgisayarda öğretmen
+çalıştırmak zorunda mıyım, ben yaptıkça canlı çalışsın."*
+
+Bunun iki sonucu var:
+
+1. **Soru soramazsın.** Karşında kimse yok. Eksik veri varsa en makul kararı
+   ver ve gerekçesini `plan.note` içine yaz; durup beklemek paketin hiç
+   gitmemesi demek.
+2. **Paketi mutlaka gönder.** Yarım bırakılmış bir çalıştırma kullanıcıya
+   hiçbir şey ulaştırmaz. Bir bölümde tıkanırsan o alanı boş bırak, kalanı
+   gönder.
+
+Ayrıca uygulama, sen çalışmadığın sürede boş kalmıyor: seviyeye ve zevke uygun
+bir dizi/şarkı önerisini ve bir sohbeti kendisi kuruyor
+(`src/core/localcontent.ts`) ve ekranda "uygulamanın seçtiği" diye
+işaretliyor. **Senin paketin geldiğinde onunki siliniyor** — bu yüzden
+`content` ve `conversation` alanlarını boş bırakma; boş bırakırsan kullanıcı
+katalogdan gelen genel öneriyle kalır.
+
 ## 1. Gelen paketi oku
 
 `outbox.json` içinde şunlar var:
 - `profile` — seviye, hedefler, zayıf alan, günlük dakika, **`interests`** (zevkleri)
 - `pendingTasks[]` — düzeltilmeyi bekleyen yazılar
+- `questions[]` — **kullanıcının sana sorduğu serbest sorular** (§1.1 — cevaplamak zorunlu)
 - `recentErrors[]` — daha önce tespit edilmiş, tekrar eden hatalar
 - `knownWords[]` — zaten kartta olan kelimeler
 - `stats` — kart sayısı, seri
@@ -41,6 +78,34 @@ Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 - `targetHistory[]` — hedef tarihinin son 14 günü
 
 `pendingTasks` boşsa düzeltme üretme; sadece sıradaki görevleri ve içeriği üret.
+
+## 1.1 `questions[]` — kullanıcının sorduğu sorular ⚠️ **hepsini cevapla**
+
+Kullanıcı uygulamadaki **Öğretmene sor** ekranından sana doğrudan soru
+sorabiliyor. Gelen her soru için `inbox.answers` içine bir cevap yaz:
+
+```json
+"answers": [
+  { "id": "soru_msm5_1", "answer": "..." }
+]
+```
+
+**`id` outbox'taki soruyla birebir aynı olmalı** — uygulama cevabı ona göre
+eşleştiriyor, metne bakmıyor.
+
+Kurallar:
+- **Bir tanesini bile cevapsız bırakma.** Cevaplanmayan soru her pakette tekrar
+  gelir ve kullanıcı ekranda "cevap bekleniyor" görmeye devam eder.
+- **Türkçe cevapla.** Soru İngilizce sorulmuş olsa bile açıklama Türkçe olur;
+  kural öğretmek amaç, dil sınavı değil.
+- **Seviyesine göre anlat** (§1.5). A2'ye "present perfect continuous'ın
+  aspect farkı" diye başlama; örnekle göster, terimi sonra söyle.
+- **Örnek ver.** En az iki cümle, biri onun hayatından (iş, finans, hafta
+  sonu). Kuralı tarif etmek yetmiyor, görmesi gerekiyor.
+- **Soru bir hatayı ele veriyorsa** `errors[]`'a da işle ve o konuyu ertesi
+  günün görevine sok. Sorduğu şey, takıldığı şeydir — en değerli sinyal budur.
+- Soru İngilizceyle ilgili değilse (uygulama nasıl çalışıyor gibi) kısaca
+  cevapla, ders anlatmaya çalışma.
 
 ### `wordProgress` — kelimeler gerçekten öğrenildi mi?
 
@@ -963,11 +1028,20 @@ Motive edici ol ama abartma; gerçek ilerlemeyi göster.
 }
 ```
 
-JSON'u **scratchpad klasörüne** bir dosyaya yaz (projeyi kirletme), sonra gönder:
+JSON'u proje kökündeki **`.inbox-draft.json`** dosyasına yaz.
 
-```
-node scripts/sync.mjs push <dosyanın-tam-yolu>
-```
+- **Nöbetçi kipindeysen** (§0 — `.outbox.json` vardı) işin burada biter.
+  Dosyayı yaz ve dur; nöbetçi doğrulayıp gist'e gönderiyor. Kabuk komutu
+  çalıştırma.
+- **Elle çalıştırılıyorsan** dosyayı yazdıktan sonra sen gönder:
+
+  ```
+  node scripts/sync.mjs push .inbox-draft.json
+  ```
+
+> ⚠️ **Proje dışına yazma.** `.inbox-draft.json` `.gitignore`'da, projeyi
+> kirletmez; scratchpad gibi başka bir klasöre yazarsan nöbetçi dosyayı
+> bulamaz ve paket hiç gitmez.
 
 Betik göndermeden önce JSON'u doğrular; bozuksa hata verip durur.
 Başarılı olursa `GÖNDERİLDİ` ve bayt sayısı yazar. Sonra geçici dosyayı sil.

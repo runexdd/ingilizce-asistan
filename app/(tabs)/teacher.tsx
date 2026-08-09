@@ -24,7 +24,11 @@ import { describeLevelScore } from '../../src/core/levelexam';
 import { estimateTarget, targetTrend } from '../../src/core/progress';
 import { toISODate } from '../../src/core/srs';
 import { markContentDone } from '../../src/db/mutations';
-import { isContentStale } from '../../src/db/selectors';
+import {
+  getActiveContent,
+  getActiveConversation,
+  isContentStale,
+} from '../../src/db/selectors';
 import { useStore } from '../../src/db/store';
 import { colors, radius, spacing } from '../../src/ui/theme';
 import type { ContentSuggestion } from '../../src/db/types';
@@ -91,8 +95,16 @@ export default function TeacherScreen() {
     [data.conversations]
   );
 
-  const conversationPlan = data.conversationPlan;
-  const planIsToday = conversationPlan?.date === today;
+  /**
+   * Sohbet ve içerik **tek yerden** seçiliyor: öğretmenin paketi taze ise o,
+   * değilse uygulamanın kendi seçimi. Böylece seviye değiştiği anda ekran
+   * değişiyor; bilgisayarda öğretmen çalışana kadar beklemek gerekmiyor.
+   */
+  const activeConversation = useMemo(
+    () => getActiveConversation(data),
+    [data]
+  );
+  const conversationPlan = activeConversation.plan;
   const todayConversation = (data.conversations ?? []).find((c) => c.date === today);
   const reviewed = (data.conversations ?? []).filter((c) => c.review).slice(-1)[0];
 
@@ -102,8 +114,15 @@ export default function TeacherScreen() {
    */
   const stale = isContentStale(data);
 
-  const watch = data.content.filter((c) => c.type !== 'task');
-  const chores = data.content.filter((c) => c.type === 'task');
+  const teacherQuestions = data.teacherQuestions ?? [];
+  const unansweredQuestions = teacherQuestions.filter((q) => !q.answer).length;
+  const answeredQuestions = teacherQuestions.filter(
+    (q) => q.answer && !q.readAt
+  ).length;
+
+  const activeContent = useMemo(() => getActiveContent(data), [data]);
+  const watch = activeContent.items.filter((c) => c.type !== 'task');
+  const chores = activeContent.items.filter((c) => c.type === 'task');
 
   const goal = plan?.targetLevel ?? nextLevel(data.profile.level) ?? data.profile.level;
 
@@ -206,8 +225,13 @@ export default function TeacherScreen() {
       </View>
 
       {/* --------------------------------------------- günün sohbeti */}
-      <Text style={styles.sectionTitle}>Günün sohbeti</Text>
-      {planIsToday && conversationPlan ? (
+      <Text style={styles.sectionTitle}>
+        Günün sohbeti
+        {activeConversation.source === 'app' ? (
+          <Text style={styles.sourceTag}>  · uygulamanın hazırladığı</Text>
+        ) : null}
+      </Text>
+      {conversationPlan ? (
         <View style={styles.box}>
           <Text style={styles.topic}>{conversationPlan.topic}</Text>
           <Text style={styles.intro}>{conversationPlan.intro}</Text>
@@ -244,15 +268,24 @@ export default function TeacherScreen() {
             </Text>
           </Pressable>
         </View>
-      ) : (
-        <View style={styles.box}>
-          <Text style={styles.empty}>
-            Bugüne sohbet gelmemiş. Ayarlar → Şimdi senkronla dediğinde öğretmen
-            zevkine göre bir dizi bölümü ya da şarkı seçip üstüne konuşulacak
-            soruları hazırlıyor.
-          </Text>
-        </View>
-      )}
+      ) : null}
+
+      {/**
+        * Öğretmene serbest soru — günün sohbetinin **ters yönü.**
+        * Sohbette soruyu öğretmen soruyor; burada kullanıcı soruyor.
+        * Kullanıcının isteği: *"öğretmenle konuşacağım yer olsun."*
+        */}
+      <Text style={styles.sectionTitle}>Aklına takılan bir şey mi var?</Text>
+      <Pressable style={styles.box} onPress={() => router.push('/sor')}>
+        <Text style={styles.askTitle}>❓  Öğretmene sor</Text>
+        <Text style={styles.askText}>
+          {unansweredQuestions > 0
+            ? `${unansweredQuestions} soru cevap bekliyor`
+            : answeredQuestions > 0
+              ? `${answeredQuestions} soruna cevap geldi — okumak için dokun`
+              : 'Bir gramer kuralı, iki kelimenin farkı, "bu neden böyle" — Türkçe sorabilirsin'}
+        </Text>
+      </Pressable>
 
       {/* --------------------------------- öğretmenin sohbet değerlendirmesi */}
       {reviewed?.review ? (
@@ -280,12 +313,24 @@ export default function TeacherScreen() {
       ) : null}
 
       {/* ------------------------------------------------ izle / dinle */}
-      <Text style={styles.sectionTitle}>İzle · dinle</Text>
+      <Text style={styles.sectionTitle}>
+        İzle · dinle
+        {activeContent.source === 'app' ? (
+          <Text style={styles.sourceTag}>  · uygulamanın seçtiği</Text>
+        ) : null}
+      </Text>
+      {activeContent.source === 'app' && watch.length > 0 ? (
+        <Text style={styles.sourceNote}>
+          Bunları uygulama seviyene ve zevklerine göre seçti — anında değişsin
+          diye. Öğretmen çalıştığında yerini ona bırakacak; onunki senin dünkü
+          hatalarına da bağlanır.
+        </Text>
+      ) : null}
       {watch.length === 0 ? (
         <View style={styles.box}>
           <Text style={styles.empty}>
-            Henüz öneri yok. Ayarlar'da "Zevklerim" alanını doldurup senkron
-            yaparsan öğretmen sevdiğin türden, seviyene uygun bir şey seçecek.
+            Henüz öneri yok. Ayarlar → Zevklerim'i doldurursan sevdiğin türden,
+            seviyene uygun bir şey seçilecek.
           </Text>
         </View>
       ) : (
@@ -474,6 +519,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   boxDone: { opacity: 0.65 },
+  askTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  askText: { fontSize: 14, color: colors.muted, lineHeight: 20 },
   empty: { fontSize: 14, color: colors.muted, lineHeight: 21 },
   note: {
     fontSize: 13,
@@ -531,6 +578,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.md,
+  },
+  sourceTag: { fontSize: 12, fontWeight: '600', color: colors.muted },
+  sourceNote: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+    marginBottom: spacing.sm,
   },
   staleTitle: { fontSize: 15, fontWeight: '700', color: '#93370D', lineHeight: 22 },
   staleText: {

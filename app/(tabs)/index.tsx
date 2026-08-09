@@ -3,7 +3,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { buildDailyPlan, type PlanTask } from '../../src/core/planner';
 import { useStore } from '../../src/db/store';
-import { getDueCardCount, getTopErrorCategories } from '../../src/db/selectors';
+import {
+  getActiveConversation,
+  getDueCardCount,
+  getTopErrorCategories,
+} from '../../src/db/selectors';
 import { colors, radius, spacing } from '../../src/ui/theme';
 
 export default function TodayScreen() {
@@ -35,11 +39,19 @@ export default function TodayScreen() {
     (t) => t.feedback !== null && !t.feedbackSeen
   ).length;
 
-  /** Bugüne sohbet geldi mi ve henüz bitirilmedi mi */
+  /**
+   * Bugünün sohbeti bitirildi mi.
+   *
+   * Sohbet artık her gün var: öğretmenin planı yoksa uygulama seviye ve zevke
+   * göre kendisi kuruyor (`getActiveConversation`). Eskiden yalnızca
+   * öğretmenin planına bakılıyordu ve senkron yapılmayan günde sohbet hiç
+   * görünmüyordu.
+   */
   const todayISO = new Date().toISOString().slice(0, 10);
-  const conversationWaiting =
-    data.conversationPlan?.date === todayISO &&
-    !(data.conversations ?? []).some((c) => c.date === todayISO && c.finished);
+  const conversation = useMemo(() => getActiveConversation(data), [data]);
+  const conversationWaiting = !(data.conversations ?? []).some(
+    (c) => c.date === todayISO && c.finished
+  );
   const isWeekend = plan.dayType === 'weekend';
   const accent = isWeekend ? colors.weekend : colors.accent;
   const accentSoft = isWeekend ? colors.weekendSoft : colors.accentSoft;
@@ -83,7 +95,7 @@ export default function TodayScreen() {
           <View style={styles.taskMain}>
             <Text style={styles.feedbackTitle}>💬 Günün sohbeti hazır</Text>
             <Text style={styles.feedbackText}>
-              {data.conversationPlan?.topic} — mikrofonla ya da yazarak
+              {conversation.plan.topic} — mikrofonla ya da yazarak
             </Text>
           </View>
           <Text style={styles.feedbackArrow}>→</Text>

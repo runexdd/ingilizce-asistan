@@ -1,6 +1,13 @@
+import { buildLocalConversation, pickLocalContent } from '../core/localcontent';
 import { addDays, toISODate } from '../core/srs';
 import { isTooHardFor } from '../core/wordbank';
-import type { AppData, Card, ErrorCategory } from './types';
+import type {
+  AppData,
+  Card,
+  ContentSuggestion,
+  ConversationPlan,
+  ErrorCategory,
+} from './types';
 
 /**
  * Salt-okunur sorgular. Hepsi saf fonksiyon — veriyi değiştirmezler.
@@ -219,6 +226,75 @@ export function isContentStale(data: AppData): boolean {
   if (!changed) return false;
   if (!data.lastInboxAt) return true;
   return changed > data.lastInboxAt;
+}
+
+/* ------------------------------------------- öğretmen mi, uygulama mı? */
+
+export interface ActiveContent {
+  items: ContentSuggestion[];
+  /** Öğretmenden mi geldi, uygulama mı seçti */
+  source: 'teacher' | 'app';
+}
+
+/**
+ * Ekranda gösterilecek içerik önerileri.
+ *
+ * Kural: **öğretmenin paketi kazanır — eskimediği sürece.** Seviye son
+ * paketten sonra değiştiyse ya da öğretmen hiç konuşmadıysa uygulama kendi
+ * kataloğundan seviyeye ve zevke uyan bir şey koyuyor.
+ *
+ * Kullanıcının şikâyeti buydu: *"A2'den B1'e çektim, hemen o öğretmen sayfası
+ * değişecek… yoksa her seçtiğimde bilgisayara gir öğretmen çalıştır, çok uzun
+ * sürer."* Uygulama öğretmen kadar iyi seçemez ama **anında** seçebilir; ekran
+ * kaynağı yazdığı için kimse yanılmıyor.
+ */
+export function getActiveContent(
+  data: AppData,
+  today: Date = new Date()
+): ActiveContent {
+  const stale = isContentStale(data);
+  if (!stale && data.content.length > 0) {
+    return { items: data.content, source: 'teacher' };
+  }
+  return {
+    items: pickLocalContent(
+      data.profile.level,
+      data.profile.tastes,
+      toISODate(today),
+      (data.contentDone ?? []).map((d) => d.title)
+    ),
+    source: 'app',
+  };
+}
+
+export interface ActiveConversation {
+  plan: ConversationPlan;
+  source: 'teacher' | 'app';
+}
+
+/**
+ * Bugünün sohbeti. Öğretmenin bugüne yazdığı senaryo varsa o; yoksa (ya da
+ * seviye değiştiyse) uygulama içeriğin üstüne bir sohbet kuruyor.
+ *
+ * Sohbetsiz gün olmasın diye: kullanıcı *"her gün böyle bir konuşma
+ * yapılsın"* dedi ve öğretmenin çalışmadığı bir gün bunu bozmamalı.
+ */
+export function getActiveConversation(
+  data: AppData,
+  today: Date = new Date()
+): ActiveConversation {
+  const iso = toISODate(today);
+  const stale = isContentStale(data);
+
+  if (!stale && data.conversationPlan?.date === iso) {
+    return { plan: data.conversationPlan, source: 'teacher' };
+  }
+
+  const content = getActiveContent(data, today).items[0];
+  return {
+    plan: buildLocalConversation(content, data.profile.level, data.plan?.sizing, iso),
+    source: 'app',
+  };
 }
 
 export function getDueCardCount(data: AppData, today: Date = new Date()): number {

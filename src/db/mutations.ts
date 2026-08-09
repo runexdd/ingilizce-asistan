@@ -7,6 +7,7 @@ import { countIntroducedToday, isContentStale } from './selectors';
 import type {
   AppData,
   ConversationMessage,
+  ConversationPlan,
   ConversationRecord,
   Feedback,
   LevelExamResult,
@@ -14,6 +15,7 @@ import type {
   SyncState,
   TargetPoint,
   TaskRecord,
+  TeacherQuestion,
 } from './types';
 
 /**
@@ -49,6 +51,51 @@ export function updateProfile(data: AppData, patch: Partial<Profile>): AppData {
           }
         : {}),
     },
+  };
+}
+
+/* ------------------------------------------- öğretmene soru (posta kutusu) */
+
+/**
+ * Kullanıcının öğretmene sorduğu serbest soru.
+ *
+ * Anında cevap yok — uygulama canlı yapay zekâ çağıramıyor. Soru `pending`
+ * olarak kaydediliyor, senkronda gist'e gidiyor, öğretmen cevaplayınca
+ * `applyInbox` cevabı buraya yazıyor. Ekran bu yüzden "cevap bekleniyor"
+ * diyor; sessizce beklemek kullanıcıya bozuk hissi veriyor.
+ */
+export function askTeacher(data: AppData, text: string): AppData {
+  const trimmed = text.trim();
+  if (!trimmed) return data;
+
+  const question: TeacherQuestion = {
+    id: newId('soru'),
+    text: trimmed,
+    askedAt: new Date().toISOString(),
+    syncState: 'pending',
+  };
+
+  return { ...data, teacherQuestions: [...(data.teacherQuestions ?? []), question] };
+}
+
+/** Soru gist'e gönderildi — bir daha gönderilmesin. */
+export function markQuestionsSynced(data: AppData, ids: string[]): AppData {
+  if (ids.length === 0) return data;
+  const set = new Set(ids);
+  return {
+    ...data,
+    teacherQuestions: (data.teacherQuestions ?? []).map((q) =>
+      set.has(q.id) ? { ...q, syncState: 'synced' as const } : q
+    ),
+  };
+}
+
+export function markAnswerRead(data: AppData, id: string): AppData {
+  return {
+    ...data,
+    teacherQuestions: (data.teacherQuestions ?? []).map((q) =>
+      q.id === id ? { ...q, readAt: q.readAt ?? new Date().toISOString() } : q
+    ),
   };
 }
 
@@ -460,9 +507,15 @@ export function markContentDone(
  */
 export function startConversation(
   data: AppData,
+  /**
+   * Yürütülecek senaryo. Öğretmenin planı taze ise o, değilse uygulamanın
+   * kurduğu yerel plan (`getActiveConversation` karar veriyor). Buraya
+   * dışarıdan verilmesinin sebebi: kaynak seçimi tek bir yerde kalsın,
+   * mutasyon o kararı tekrar vermesin.
+   */
+  plan: ConversationPlan | undefined,
   today: Date = new Date()
 ): AppData {
-  const plan = data.conversationPlan;
   if (!plan) return data;
 
   /**
@@ -700,6 +753,15 @@ export function applyInbox(
      * `profile.levelChangedAt` bundan yeniyse elimizdeki içerik eski seviyeye
      * göre yazılmış demektir ve ekran onu "eskimiş" diye işaretler.
      */
+    /**
+     * Öğretmenin cevapladığı sorular. Eşleşme **id** üzerinden; metne göre
+     * eşleştirmek aynı soruyu iki kez soran kullanıcıda karışırdı.
+     */
+    teacherQuestions: (data.teacherQuestions ?? []).map((q) => {
+      const reply = inbox.answers?.find((a) => a.id === q.id);
+      if (!reply?.answer?.trim() || q.answer) return q;
+      return { ...q, answer: reply.answer.trim(), answeredAt: new Date().toISOString() };
+    }),
     lastInboxAt: inbox.generatedAt ?? new Date().toISOString(),
     sync: { ...next.sync, lastPullAt: new Date().toISOString() },
   };

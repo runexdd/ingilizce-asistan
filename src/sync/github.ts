@@ -94,6 +94,11 @@ export interface OutboxPayload {
   levelExam?: LevelExamResult;
   /** Düzeltme bekleyen görevler */
   pendingTasks: OutboxTask[];
+  /**
+   * Kullanıcının öğretmene sorduğu, henüz cevaplanmamış serbest sorular.
+   * Öğretmen `inbox.answers` içinde aynı `id` ile cevaplar.
+   */
+  questions?: Array<{ id: string; text: string; askedAt: string }>;
   /** En sık tekrarlanan hatalar — görev üretiminin girdisi */
   recentErrors: Array<{ category: string; count: number; example: string | null }>;
   stats: { cardCount: number; dueCardCount: number; streakDays: number };
@@ -201,6 +206,11 @@ export interface InboxPayload {
    * yürütüyor. Detaylı kural `.claude/commands/ogretmen.md` §5.1'de.
    */
   conversation?: ConversationPlan;
+  /**
+   * Kullanıcının sorduğu serbest sorulara cevaplar.
+   * `id` outbox'taki `questions[].id` ile birebir aynı olmalı.
+   */
+  answers?: Array<{ id: string; answer: string }>;
   /** Bir önceki günün sohbetlerine yazılan değerlendirmeler */
   conversationReviews?: Array<{
     conversationId: string;
@@ -372,6 +382,10 @@ export function buildOutbox(data: AppData): OutboxPayload {
       userResponse: t.userResponse,
       date: t.date,
     })),
+    // Cevaplanmamış sorular her pakette gider — öğretmen bir turu kaçırırsa kaybolmasın
+    questions: (data.teacherQuestions ?? [])
+      .filter((q) => !q.answer)
+      .map((q) => ({ id: q.id, text: q.text, askedAt: q.askedAt })),
     recentErrors: [...data.errors]
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)

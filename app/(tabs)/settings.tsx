@@ -30,6 +30,7 @@ import {
 import {
   applyInbox,
   markConversationsSynced,
+  markQuestionsSynced,
   markTasksSynced,
   setSync,
   updateProfile,
@@ -141,8 +142,10 @@ export default function SettingsScreen() {
 
     const sentIds = outbox.pendingTasks.map((t) => t.id);
     const sentConversations = outbox.conversations.map((c) => c.id);
+    const sentQuestions = (outbox.questions ?? []).map((q) => q.id);
     update((current) => {
       let next = markTasksSynced(current, sentIds);
+      next = markQuestionsSynced(next, sentQuestions);
       next = markConversationsSynced(next, sentConversations);
       next = setSync(next, { lastPushAt: new Date().toISOString() });
       if (pulled.inbox) next = applyInbox(next, pulled.inbox);

@@ -34,13 +34,17 @@
  */
 
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const API = 'https://api.github.com';
 const DESCRIPTION_PREFIX = 'ingilizce-asistan';
 /** Son işlenen paketin damgası burada tutulur — aynı paketi iki kez işleme */
 const STATE_FILE = resolve('.watch-state.json');
+/** Telefondan gelen paket — öğretmen bunu diskten okur, ağa çıkmaz */
+const OUTBOX_FILE = resolve('.outbox.json');
+/** Öğretmenin yazdığı cevap — nöbetçi bunu gist'e gönderir */
+const DRAFT_FILE = resolve('.inbox-draft.json');
 
 /* ------------------------------------------------------------ ayarlar */
 
@@ -133,26 +137,34 @@ async function saveState(state) {
 /**
  * Claude Code'u sessiz kipte çalıştırır.
  *
- * `--allowed-tools`: nöbetçi kimseye soru soramaz (arkada çalışıyor), o yüzden
- * `/ogretmen`'in ihtiyaç duyduğu araçlar önceden verilir. Liste bilerek dar:
- * yalnızca köprü betiği ve dosya yazma. Geniş bir izin vermek, arka planda
- * çalışan bir şeye gereğinden fazla yetki vermek olurdu.
+ * ## ⚠️ Ağ işini öğretmen değil, nöbetçi yapar
+ *
+ * Nöbetçi kimseye soru soramaz — arkada çalışıyor, karşısında kimse yok. İlk
+ * tasarımda öğretmen `node scripts/sync.mjs pull|push` çalıştırıyordu ve **üç
+ * denemede de** izin duvarına tosladı: `-p` kipindeki oturum kabuk komutunu
+ * çalıştıramadı, "izin ver" diye sordu, cevap veren olmadı. Her seferinde
+ * "bitti" yazdı ama gist'e tek bayt yazılmamıştı — sessiz başarısızlık, en
+ * kötü tür.
+ *
+ * Denenip **işe yaramayanlar** (tekrar deneme):
+ *  - `--allowed-tools "Bash(node scripts/sync.mjs:*)"` → Windows'ta parantez
+ *    ve boşluk `shell: true` altında bozuluyor, desen eşleşmiyor.
+ *  - Bayrağı Bash'siz vermek → bayrak bir **beyaz liste**, verildiği anda
+ *    listede olmayan her araç kapanıyor; Bash tamamen kayboldu.
+ *  - `.claude/settings.json` içine izin kuralı → `-p` oturumu yine sordu.
+ *
+ * Çözüm mimarinin kendisinde: **öğretmenin ağa çıkmasına gerek yok.**
+ *  1. Nöbetçi gist'ten çeker, `.outbox.json` diye diske yazar.
+ *  2. Öğretmen o dosyayı **okur**, cevabı `.inbox-draft.json` diye **yazar**.
+ *     İkisi de dosya işi; `--permission-mode acceptEdits` bunlara yetiyor.
+ *  3. Nöbetçi taslağı doğrulayıp gist'e kendisi gönderir.
+ *
+ * Yan faydası güvenlik: arka planda çalışan yapay zekâ hiçbir kabuk komutu
+ * çalıştırmıyor, sadece iki dosyaya dokunuyor.
  */
 function runTeacher() {
   return new Promise((resolvePromise) => {
-    const args = [
-      '-p',
-      '/ogretmen',
-      '--permission-mode',
-      'acceptEdits',
-      '--allowed-tools',
-      'Bash(node scripts/sync.mjs:*)',
-      'Read',
-      'Write',
-      'Edit',
-      'Glob',
-      'Grep',
-    ];
+    const args = ['-p', '/ogretmen', '--permission-mode', 'acceptEdits'];
 
     log(`öğretmen çalıştırılıyor: claude ${args.slice(0, 2).join(' ')}`);
 
@@ -263,11 +275,56 @@ async function tick(token, options) {
     return;
   }
 
-  const ok = await runTeacher();
+  /* 1) Paketi diske koy — öğretmen ağa çıkmasın, sadece okusun */
+  await writeFile(OUTBOX_FILE, raw, 'utf8');
+  await rm(DRAFT_FILE, { force: true });
+
+  /* 2) Öğretmeni çalıştır */
+  const ran = await runTeacher();
+
+  /* 3) Taslağı al, doğrula, gist'e gönder */
+  let draft = null;
+  try {
+    draft = await readFile(DRAFT_FILE, 'utf8');
+  } catch {
+    log(
+      ran
+        ? 'öğretmen çalıştı ama .inbox-draft.json yazmamış — paket gönderilmedi.'
+        : 'öğretmen tamamlanmadı, taslak yok.'
+    );
+  }
+
+  let sent = false;
+  if (draft) {
+    try {
+      JSON.parse(draft);
+    } catch (error) {
+      log(`taslak bozuk JSON, gönderilmedi — ${error.message}`);
+      draft = null;
+    }
+  }
+
+  if (draft) {
+    const res = await fetch(`${API}/gists/${gist.id}`, {
+      method: 'PATCH',
+      headers: { ...headers(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { 'inbox.json': { content: draft } } }),
+    });
+    if (res.ok) {
+      sent = true;
+      log(`paket gönderildi (${draft.length} karakter). Telefon kendiliğinden çekecek.`);
+    } else {
+      log(`gönderilemedi (${res.status}).`);
+    }
+  }
+
+  await rm(DRAFT_FILE, { force: true });
+  await rm(OUTBOX_FILE, { force: true });
+
   await saveState({
-    lastOutboxAt: generatedAt,
+    lastOutboxAt: sent ? generatedAt : state.lastOutboxAt,
     lastRunAt: Date.now(),
-    lastLessonDate: ok ? today : state.lastLessonDate,
+    lastLessonDate: sent ? today : state.lastLessonDate,
   });
 }
 

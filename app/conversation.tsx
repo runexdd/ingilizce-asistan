@@ -48,6 +48,7 @@ import {
   recordSession,
   startConversation,
 } from '../src/db/mutations';
+import { getActiveConversation } from '../src/db/selectors';
 import { useStore } from '../src/db/store';
 import { colors, radius, spacing } from '../src/ui/theme';
 
@@ -55,14 +56,19 @@ export default function ConversationScreen() {
   const { data, update } = useStore();
   const today = toISODate(new Date());
 
-  const plan = data.conversationPlan;
-  const planIsToday = plan?.date === today;
+  /**
+   * Senaryonun kaynağı tek yerden seçiliyor: öğretmenin bugüne yazdığı plan
+   * taze ise o, değilse uygulamanın seviye + zevke göre kurduğu plan. Böylece
+   * seviye değiştiği anda sohbet de değişiyor, bilgisayarı beklemeden.
+   */
+  const active = useMemo(() => getActiveConversation(data), [data]);
+  const plan = active.plan;
 
   /* Sohbet kaydı yoksa aç — ekran ilk açıldığında öğretmenin ilk repliği düşer */
   useEffect(() => {
-    if (!planIsToday) return;
-    update((current) => startConversation(current));
-  }, [planIsToday, update]);
+    update((current) => startConversation(current, plan));
+    // Plan gün içinde değişmiyor; kimlik değil tarih üzerinden bağlanıyoruz
+  }, [plan.date, plan.topic, update]);
 
   const record = useMemo(
     () => (data.conversations ?? []).filter((c) => c.date === today).at(-1),
@@ -102,22 +108,6 @@ export default function ConversationScreen() {
     micRef.current?.stop();
     stopSpeaking();
   }, []);
-
-  if (!planIsToday || !plan) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.emptyTitle}>Bugüne sohbet gelmemiş</Text>
-        <Text style={styles.emptyText}>
-          Öğretmen sohbeti bir gün önceden hazırlıyor: zevkine göre bir dizi
-          bölümü ya da şarkı seçiyor, sonra o içerik üstüne konuşulacak soruları
-          yazıyor. Ayarlar → Şimdi senkronla dediğinde gelir.
-        </Text>
-        <Pressable style={styles.primaryButton} onPress={() => router.back()}>
-          <Text style={styles.primaryButtonText}>Geri dön</Text>
-        </Pressable>
-      </View>
-    );
-  }
 
   const finished = record?.finished ?? false;
   const currentTurn = plan.turns[turnIndex];

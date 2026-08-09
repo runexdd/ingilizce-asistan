@@ -483,6 +483,36 @@ export interface SyncState {
   lastPullAt?: string;
 }
 
+/**
+ * Öğretmene sorulan serbest soru — **posta kutusu**, canlı sohbet değil.
+ *
+ * Kullanıcının isteği: *"öğretmenle konuşacağım yer olsun."* Günün sohbeti
+ * (`conversationPlan`) öğretmenin önceden yazdığı senaryoyu oynatıyor; bu ise
+ * tersi yön — aklına takılan şeyi **kendi** sorabilmesi.
+ *
+ * Telefondaki uygulama canlı yapay zekâ çağıramıyor (proje kısıtı: Claude Max
+ * dışında tek kuruş ödenmiyor). Bu yüzden akış posta kutusu gibi işliyor:
+ * soru yazılır → senkronda gist'e gider → Ömer bilgisayarda `/ogretmen`
+ * çalıştırınca öğretmen cevaplar → sonraki senkronda cevap ekrana düşer.
+ *
+ * Gecikmeli ama gerçek: cevabı yazan, o kişinin bütün geçmişini gören
+ * öğretmenin kendisi. Ekranda "cevap bekleniyor" diye dürüstçe yazıyor ki
+ * kullanıcı anında cevap sanıp beklemesin.
+ */
+export interface TeacherQuestion {
+  id: string;
+  /** Kullanıcının sorusu — Türkçe ya da İngilizce, serbest */
+  text: string;
+  askedAt: string;
+  /** Soru öğretmene ulaştı mı */
+  syncState: 'pending' | 'synced';
+  /** Öğretmenin cevabı; gelene kadar boş */
+  answer?: string;
+  answeredAt?: string;
+  /** Kullanıcı cevabı gördü mü — rozet için */
+  readAt?: string;
+}
+
 export interface AppData {
   /** Veri şeması sürümü — ileride biçim değişirse taşıma için */
   version: number;
@@ -518,6 +548,11 @@ export interface AppData {
   conversations: ConversationRecord[];
   /** Hedef tarihinin gün gün geçmişi — "dün 80'di, bugün 78" grafiği */
   targetHistory: TargetPoint[];
+  /**
+   * Öğretmene sorulan serbest sorular ve gelen cevaplar.
+   * Bkz. {@link TeacherQuestion}.
+   */
+  teacherQuestions?: TeacherQuestion[];
   /** Seviye içi puanlama sınavının son sonucu */
   levelExam?: LevelExamResult;
   /**
