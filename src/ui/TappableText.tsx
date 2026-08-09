@@ -428,10 +428,18 @@ const styles = StyleSheet.create({
    *   popup     30 — hepsinin üstünde
    */
   container: { position: 'relative', zIndex: 20 },
-  flow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' },
+  /** zIndex perdenin ÜSTÜNDE olmalı ve buraya verilmeli — kelimelerin kendine
+   *  verilince işe yaramıyor, çünkü bu View kendi yığın bağlamını kuruyor ve
+   *  içindeki değerler dışarı çıkamıyor. */
+  flow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    zIndex: 2,
+  },
   paragraphBreak: { width: '100%', height: spacing.md },
 
-  wordWrap: { marginRight: 6, zIndex: 2 },
+  wordWrap: { marginRight: 6 },
   word: { fontSize: 17, color: colors.text, lineHeight: 30 },
   glossWord: {
     color: colors.accent,
