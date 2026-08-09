@@ -349,12 +349,24 @@ export async function lookupWord(
 
   /* 1. Öğretmenin sözlüğü — bağlamı bilen tek kaynak */
   if (entry?.meaning) {
-    const needsExtra = !entry.senses?.length || !entry.examples?.length;
-    const extra = needsExtra ? await defineOnline(word, lemma) : null;
+    const isPhrase = entry.word.trim().includes(' ');
+
+    /**
+     * ⛔ Kalıplarda internetten ek bilgi çekilmez.
+     *
+     * Sözlük servisi kalıbı değil, dokunulan **tek kelimeyi** tanır. "every
+     * evening" için eş anlamlı diye *eve*, örnek diye *"It was the evening of
+     * the Roman Empire"* dönüyordu — ikisi de kalıpla ilgisiz. Kalıpta ne
+     * varsa öğretmenden gelir; yoksa hiç gösterilmez.
+     */
+    const extra =
+      !isPhrase && (!entry.senses?.length || !entry.examples?.length)
+        ? await defineOnline(word, lemma)
+        : null;
 
     return {
       word: entry.word,
-      phrase: entry.word.includes(' ') ? entry.word : undefined,
+      phrase: isPhrase ? entry.word : undefined,
       meaning: entry.meaning,
       source: 'glossary',
       otherMeanings: entry.senses?.length ? entry.senses : undefined,
