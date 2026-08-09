@@ -25,6 +25,7 @@ import {
   validateToken,
 } from '../../src/sync/github';
 import { colors, radius, spacing } from '../../src/ui/theme';
+import { BUILD } from '../../src/version';
 
 const MIN_MINUTES = 2;
 const MAX_MINUTES = 90;
@@ -289,6 +290,12 @@ export default function SettingsScreen() {
           </View>
         </Pressable>
       </View>
+
+      <Text style={styles.build}>
+        Sürüm {BUILD}
+        {'\n'}Güncelleme gelmediyse: sayfayı aşağı çekip yenile, ya da ana
+        ekrandaki ikonu kapatıp yeniden aç.
+      </Text>
     </ScrollView>
   );
 }
@@ -401,4 +408,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   messageError: { color: '#D92D20' },
+  build: {
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    lineHeight: 18,
+  },
 });

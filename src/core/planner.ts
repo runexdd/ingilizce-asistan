@@ -71,6 +71,12 @@ export interface PlannerInput {
   topErrorCategories: string[];
   /** Kullanıcı "bugün yoğunum" dediyse true */
   lightMode?: boolean;
+  /**
+   * Öğretmenin bugün için gönderdiği görevler.
+   * Doluysa günün planı BUDUR — uygulama kendi başına program uydurmaz.
+   * Boşsa aşağıdaki yedek karışım devreye girer.
+   */
+  suggestedTasks?: Array<{ kind: string; prompt: string; targetError?: string }>;
 }
 
 /**
@@ -98,67 +104,97 @@ export function buildDailyPlan(input: PlannerInput): DailyPlan {
     return finalize(dayType, dayLabel, tasks, true);
   }
 
-  if (dayType === 'workday') {
-    // Beceriler haftaya dağıtılır — her gün aynı görev bıktırır
-    tasks.push(makeWorkdayTask(input.date.getDay(), settings.weekdayMinutes, focus));
+  // 1) ÖĞRETMENİN GÖREVLERİ — varsa esas budur.
+  //    Karar verici öğretmendir; uygulama kendi başına program uydurmaz.
+  const fromTeacher = (input.suggestedTasks ?? []).filter((t) => t.prompt?.trim());
+
+  if (fromTeacher.length > 0) {
+    const budget = dayType === 'workday' ? settings.weekdayMinutes : settings.weekendMinutes;
+    // Kart tekrarına yer bırak
+    const taskBudget = Math.max(3, budget - Math.min(3, input.dueCardCount * 0.25));
+    const per = Math.max(2, Math.round(taskBudget / fromTeacher.length));
+
+    fromTeacher.forEach((t, i) => {
+      tasks.push({
+        id: t.kind,
+        kind: taskKindOf(t.kind),
+        title: TITLES[t.kind] ?? 'Görev',
+        detail: t.targetError
+          ? `Odak: ${t.targetError}`
+          : 'Öğretmenin bugün için verdiği görev',
+        estimatedMinutes: per,
+        // Aynı tip iki kez gelirse ayırt edilebilsin
+        ...(i > 0 && fromTeacher.findIndex((x) => x.kind === t.kind) !== i
+          ? { id: `${t.kind}` }
+          : {}),
+      });
+    });
+  } else if (dayType === 'workday') {
+    // 2) YEDEK — öğretmen henüz görev göndermediyse.
+    //    Kısa günde bile tek tip değil: üretim + tanıma birlikte.
+    tasks.push(makeRotatingTask(input.date.getDay(), settings.weekdayMinutes, focus));
+
+    // Süre elveriyorsa ikinci bir kısa dokunuş ekle — gün tek renk olmasın
+    if (settings.weekdayMinutes >= 9) {
+      tasks.push(makeSecondTouch(input.date.getDay(), focus));
+    }
 
     const count = Math.min(input.dueCardCount, WORKDAY_CARD_CAP);
-    if (count > 0) {
-      tasks.push(makeCardTask(count));
-    }
+    if (count > 0) tasks.push(makeCardTask(count));
   } else {
-    tasks.push({
-      id: 'writing-long',
-      kind: 'writing',
-      title: 'Uzun yazma',
-      detail: focus
-        ? `Bir paragraf. Bu haftanın zayıf noktası: ${focus}`
-        : 'Bir paragraf yaz — hafta sonu asıl iş burada',
-      estimatedMinutes: 12,
-    });
-
+    // Hafta sonu: dört becerinin hepsi bir arada
     tasks.push({
       id: 'reading',
       kind: 'reading',
       title: 'Okuma',
-      detail: 'Seviyene uygun kısa metin + anlama soruları',
-      estimatedMinutes: 6,
+      detail: 'Günün kelimelerini bağlamda gör',
+      estimatedMinutes: 7,
+    });
+    tasks.push({
+      id: 'writing-long',
+      kind: 'writing',
+      title: 'Uzun yazma',
+      detail: focus ? `Bir paragraf. Odak: ${focus}` : 'Bir paragraf yaz',
+      estimatedMinutes: 10,
+    });
+    tasks.push({
+      id: 'speaking',
+      kind: 'speaking',
+      title: 'Konuşma',
+      detail: 'Aynı kelimelerle sesli üretim — mikrofonla',
+      estimatedMinutes: 5,
     });
 
-    if (input.dueCardCount > 0) {
-      tasks.push(makeCardTask(input.dueCardCount));
-    }
+    if (input.dueCardCount > 0) tasks.push(makeCardTask(input.dueCardCount));
   }
 
   return finalize(dayType, dayLabel, tasks, false);
 }
 
+const TITLES: Record<string, string> = {
+  'writing-micro': 'Kısa yazma',
+  'writing-long': 'Uzun yazma',
+  speaking: 'Konuşma',
+  reading: 'Okuma',
+  listening: 'Dinleme',
+};
+
+function taskKindOf(kind: string): TaskKind {
+  if (kind === 'reading') return 'reading';
+  if (kind === 'speaking') return 'speaking';
+  if (kind === 'listening') return 'listening';
+  return 'writing';
+}
+
 /**
- * İş gününün ana görevi — beceriler haftaya dağıtılır.
- * Pzt yazma · Sal okuma · Çar konuşma · Per yazma · Cum konuşma
- *
- * Böylece her gün aynı şeyi yapmıyorsun ve dört beceri de haftada
- * en az bir kez çalışılıyor.
+ * Yedek plandaki ana görev — öğretmen henüz görev göndermemişken.
+ * Gün gün dönüşür ki hep aynı şey olmasın.
  */
-function makeWorkdayTask(
-  weekday: number,
-  minutes: number,
-  focus?: string
-): PlanTask {
-  const duration = Math.max(3, minutes - 2);
+function makeRotatingTask(weekday: number, minutes: number, focus?: string): PlanTask {
+  const duration = Math.max(3, Math.round(minutes * 0.6));
 
   // 1=Pzt, 2=Sal, 3=Çar, 4=Per, 5=Cum
-  if (weekday === 2) {
-    return {
-      id: 'reading',
-      kind: 'reading',
-      title: 'Kısa okuma',
-      detail: 'Seviyene uygun metin + anlama soruları',
-      estimatedMinutes: duration,
-    };
-  }
-
-  if (weekday === 3 || weekday === 5) {
+  if (weekday === 2 || weekday === 4) {
     return {
       id: 'speaking',
       kind: 'speaking',
@@ -178,6 +214,26 @@ function makeWorkdayTask(
       ? `3-4 cümle. Bugünün odağı: ${focus}`
       : '3-4 cümle yaz, düzeltmesi öğretmenden gelecek',
     estimatedMinutes: duration,
+  };
+}
+
+/** Günü tek renk bırakmamak için ikinci kısa dokunuş. */
+function makeSecondTouch(weekday: number, focus?: string): PlanTask {
+  if (weekday === 2 || weekday === 4) {
+    return {
+      id: 'writing-micro',
+      kind: 'writing',
+      title: 'Kısa yazma',
+      detail: focus ? `Birkaç cümle. Odak: ${focus}` : 'Birkaç cümle yaz',
+      estimatedMinutes: 3,
+    };
+  }
+  return {
+    id: 'reading',
+    kind: 'reading',
+    title: 'Kısa okuma',
+    detail: 'Günün kelimelerini bağlamda gör',
+    estimatedMinutes: 3,
   };
 }
 

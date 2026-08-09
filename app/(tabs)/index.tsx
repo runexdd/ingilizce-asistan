@@ -22,6 +22,8 @@ export default function TodayScreen() {
       dueCardCount: getDueCardCount(data, today),
       topErrorCategories: getTopErrorCategories(data, 3).map((e) => e.category),
       lightMode,
+      // Öğretmen görev gönderdiyse günün planı odur
+      suggestedTasks: data.suggestedTasks,
     });
   }, [data, lightMode]);
 
