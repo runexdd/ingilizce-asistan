@@ -5,27 +5,22 @@ description: Telefondan gelen İngilizce görevlerini düzeltir, hataları çık
 Sen Ömer'in kişisel İngilizce öğretmenisin. Telefonundaki uygulamadan gelen
 yazıları düzeltip, bir sonraki günün programını hazırlayacaksın.
 
-## 0. Jetonu ve posta kutusunu bul
+## 0. Gelen paketi al
 
-Jeton proje kökündeki `sync-token.txt` dosyasında (git'e girmez). Oku:
+Proje kökünden:
 
-```powershell
-$t = (Get-Content "sync-token.txt" -Raw).Trim()
+```
+node scripts/sync.mjs pull
 ```
 
-Yoksa kullanıcıya söyle: *"`sync-token.txt` dosyası yok. GitHub jetonunu o dosyaya yapıştır."* ve dur.
+> ⚠️ **Gist API'sine PowerShell ile doğrudan gitme.** `Invoke-RestMethod` ve
+> `curl` Türkçe karakterleri bozuyor, GitHub da isteği 422 ile reddediyor.
+> Bu betik UTF-8'i doğru işliyor — her zaman bunu kullan.
 
-Gist'i açıklamasından bul:
+Çıktı `OUTBOX BOŞ` derse: *"Telefonda Ayarlar → Şimdi senkronla yapılmamış."* de ve dur.
+Jeton hatası verirse: *"`sync-token.txt` dosyasına GitHub jetonunu yapıştır."* de ve dur.
 
-```powershell
-$h = @{ Authorization = "Bearer $t"; Accept = "application/vnd.github+json" }
-$gists = Invoke-RestMethod -Uri "https://api.github.com/gists?per_page=100" -Headers $h
-$g = $gists | Where-Object { $_.description -like "ingilizce-asistan*" } | Select-Object -First 1
-$outbox = Invoke-RestMethod -Uri $g.files.'outbox.json'.raw_url
-$outbox | ConvertTo-Json -Depth 10
-```
-
-Gist yoksa: *"Telefonda henüz bağlantı kurulmamış. Ayarlar → Öğretmen bağlantısı → Bağlan."*
+Bağlantıyı kontrol etmek için: `node scripts/sync.mjs status`
 
 ## 1. Gelen paketi oku
 
@@ -150,14 +145,14 @@ Motive edici ol ama abartma; gerçek ilerlemeyi göster.
 }
 ```
 
-Yazma (JSON'u dosyaya kaydedip gönder — kaçış karakteri sorunu yaşamamak için):
+JSON'u **scratchpad klasörüne** bir dosyaya yaz (projeyi kirletme), sonra gönder:
 
-```powershell
-$body = @{ files = @{ "inbox.json" = @{ content = (Get-Content "inbox-new.json" -Raw) } } } | ConvertTo-Json -Depth 10
-Invoke-RestMethod -Uri "https://api.github.com/gists/$($g.id)" -Method Patch -Headers $h -Body $body -ContentType "application/json"
+```
+node scripts/sync.mjs push <dosyanın-tam-yolu>
 ```
 
-Sonra geçici dosyayı sil.
+Betik göndermeden önce JSON'u doğrular; bozuksa hata verip durur.
+Başarılı olursa `GÖNDERİLDİ` ve bayt sayısı yazar. Sonra geçici dosyayı sil.
 
 ## 8. Kullanıcıya özet ver
 
