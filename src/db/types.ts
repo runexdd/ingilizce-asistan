@@ -84,6 +84,43 @@ export interface SessionRecord {
   tasksCompleted: number;
 }
 
+/** Metinde dokunulabilir kelime — anlamı anında görünür, karta eklenebilir */
+export interface GlossaryEntry {
+  /** Metinde geçtiği hâli (küçük harfe indirgenmiş eşleşme yapılır) */
+  word: string;
+  meaning: string;
+  /** Bu kelime bugünün hedef kelimelerinden mi */
+  isTarget?: boolean;
+}
+
+/**
+ * Günün dersi — tek tema, tek kelime seti.
+ *
+ * Ürünün ayırt edici mekaniği: o gün yapılan HER görev (okuma, yazma,
+ * konuşma, kartlar, içerik) aynı kelimeleri döver. Aynı kelimeyle beş farklı
+ * yerde karşılaşmak, aynı kelimeyi beş kez ezberlemekten kalıcıdır.
+ *
+ * Öğretmen (Claude Code) her senkronda kurar.
+ */
+export interface DailyLesson {
+  /** 'YYYY-MM-DD' */
+  date: string;
+  /** Günün teması: "seyahat", "iş görüşmesi", "sağlık"... */
+  theme: string;
+  /** Bugün öğrenilecek kelimeler — tüm görevler bunlara bağlanır */
+  targetWords: Array<{ word: string; meaning: string; example?: string }>;
+  /** Öğretmenin yazdığı okuma parçası (özgün, seviyeye uygun) */
+  passage?: {
+    title: string;
+    text: string;
+    /** Devam eden hikâyede kaçıncı bölüm */
+    chapter?: number;
+    questions?: Array<{ question: string; options: string[]; answerIndex: number }>;
+  };
+  /** Metindeki zor kelimelerin anlamları — dokun-çevir için */
+  glossary: GlossaryEntry[];
+}
+
 /**
  * Öğretmenin (Claude Code) belirlediği plan.
  *
@@ -177,6 +214,8 @@ export interface AppData {
   weeklyReport?: string;
   /** Öğretmenin belirlediği güncel plan */
   plan?: TeacherPlan;
+  /** Günün dersi — tema, hedef kelimeler, okuma parçası */
+  lesson?: DailyLesson;
   /** Öğretmenin günlük puan geçmişi — ilerleme grafiğinin kaynağı */
   scores: TeacherScore[];
 }

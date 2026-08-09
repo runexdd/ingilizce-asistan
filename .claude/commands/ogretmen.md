@@ -92,12 +92,81 @@ Seviye sabit bir kapı değil, kayan bir başlangıç noktası:
 - Sürekli temel hatalar varsa bir basamak düşür
 - Emin değilsen **boş bırak.** Her senkronda oynatma.
 
+## 3.5 Günün dersini kur (`lesson`) — **ürünün kalbi**
+
+Bugünün **tek teması** ve **tek kelime seti** olur; o gün yapılan her görev
+aynı kelimeleri döver. Aynı kelimeyle beş farklı yerde karşılaşmak, beş kez
+ezberlemekten kalıcıdır. Diğer uygulamalarda olmayan şey budur.
+
+```json
+"lesson": {
+  "date": "YYYY-MM-DD",
+  "theme": "seyahat",
+  "targetWords": [{ "word": "...", "meaning": "...", "example": "..." }],
+  "passage": {
+    "title": "...", "chapter": 3, "text": "...",
+    "questions": [{ "question": "...", "options": ["..."], "answerIndex": 0 }]
+  },
+  "glossary": [{ "word": "...", "meaning": "...", "isTarget": true }]
+}
+```
+
+### `targetWords` — kaç tane?
+
+`plan.dailyNewWords` kadar. Sayıya sen karar veriyorsun (bkz. 5.5). 5'ten başla,
+tutma oranına göre ayarla, **10'u geçme.**
+
+Kelime seçim kuralları 2. bölümdekiyle aynı: **kullanıcının yazdığı kelimeyi
+verme.** Cambridge English Vocabulary Profile seviye etiketlerini esas al.
+
+### `passage` — özgün, devam eden hikâye
+
+- **Sen yazacaksın.** Telifli kitap metni kopyalama. Kamu malı metin
+  kullanabilirsin ama en iyisi kendi yazdığın hikâye.
+- **Bölüm bölüm ilerlesin.** `chapter` numarası ver, önceki bölümde kaldığın
+  yerden devam et. Merak, geri getiren en güçlü şeydir.
+  Önceki bölümü hatırlamak için `outbox` içindeki geçmişe bak.
+- **Uzunluk:** A2 için 120-180 kelime, B1 için 200-280, B2 için 300-400.
+  Kullanıcı "5-10 sayfa" istedi ama bir oturuşta okunmayan metin okunmaz —
+  kısa bölümler hâlinde ilerlemek daha etkili.
+- **Hedef kelimeler metinde GEÇSİN.** Zorlama olmasın, doğal aksın.
+- 2-3 anlama sorusu ekle.
+
+### `glossary` — dokun-çevir sözlüğü
+
+Metindeki **zor kelimelerin** listesi. Kullanıcı metinde o kelimeye dokununca
+anlamı çıkar ve tek dokunuşla kartlarına ekler.
+
+- Hedef kelimeleri `isTarget: true` ile işaretle (metinde vurgulanır)
+- `word` alanı metinde **geçtiği hâlde** olsun (çekimli hâli varsa onu yaz)
+- `knownWords` içindekileri sözlüğe koyma — zaten biliyor
+- 8-15 kelime yeterli; her kelimeyi işaretleme, metin okunmaz hâle gelir
+
+### ⚠️ ÇİFT KONTROL — zorunlu
+
+Kullanıcı bunu özellikle istedi. Paketi göndermeden önce **iki kez** kontrol et:
+
+1. **Anlam doğru mu?** Her Türkçe karşılığı tek tek gözden geçir. Yaklaşık
+   değil, doğru olsun. Emin değilsen o kelimeyi çıkar.
+2. **Bağlam doğru mu?** Örnek cümlede ve metinde kelime **gerçekten o anlamda**
+   mı kullanılmış? Çok anlamlı kelimelerde (bkz. *run*, *get*, *set*) hangi
+   anlamı öğrettiğin net olsun.
+3. **Metin ile sözlük tutuyor mu?** `glossary` içindeki her kelime metinde
+   gerçekten geçiyor mu? Geçmeyen kelime sözlükte durmamalı.
+
+Uydurma anlam veya zorlama bağlam, öğrenciyi yanlış öğretir — hiç öğretmemekten
+kötüdür.
+
 ## 4. Sıradaki görevleri üret (`nextTasks`)
 
 3-4 görev. **En sık tekrar eden hatayı hedefle** — ürünün asıl vaadi bu:
 dün yapılan hata, yarının görevidir.
 
 Her görev `{ kind, prompt, targetError }`. `prompt` İngilizce yazılır.
+
+> **Görevler günün kelimelerine bağlanır.** Yazma promptunda "use these words:
+> ..." de, konuşma promptunda aynı kelimeleri iste, içerik önerisini aynı
+> temadan seç. Gün boyunca aynı kelimeler dönsün.
 
 **Görev boyutu sabit değil.** Şuna göre ayarla:
 - **Seviye**: A2 → 3-4 cümle · B1 → 5-6 cümle · B2 → paragraf

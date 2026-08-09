@@ -12,8 +12,9 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { pickPassage, type ReadingPassage } from '../../src/core/reading';
-import { recordSession, saveTaskResponse } from '../../src/db/mutations';
+import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
+import { TappableText } from '../../src/ui/TappableText';
 import { colors, radius, spacing } from '../../src/ui/theme';
 
 /**
@@ -34,6 +35,16 @@ export default function TaskScreen() {
   return <WritingTask long={kind === 'writing-long'} />;
 }
 
+/** Bugünün hedef kelimeleri — ders bugüne aitse döner, değilse boş. */
+function useTodayWords() {
+  const { data } = useStore();
+  return useMemo(() => {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    if (!data.lesson || data.lesson.date !== todayISO) return [];
+    return data.lesson.targetWords;
+  }, [data.lesson]);
+}
+
 /* ------------------------------------------------------------------ yazma */
 
 function WritingTask({ long }: { long: boolean }) {
@@ -51,6 +62,8 @@ function WritingTask({ long }: { long: boolean }) {
     (long
       ? 'Tell the story of one thing that happened to you this week. Use at least five separate sentences.'
       : 'Write 3-4 sentences about what you did today.');
+
+  const todayWords = useTodayWords();
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
 
@@ -79,6 +92,7 @@ function WritingTask({ long }: { long: boolean }) {
         keyboardShouldPersistTaps="handled"
       >
         <PromptBox label="Yazma görevi" text={prompt} focus={suggested?.targetError} />
+        <TargetWords words={todayWords} />
 
         <TextInput
           style={styles.input}
@@ -116,13 +130,130 @@ function ReadingTask() {
   const [checked, setChecked] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
-  // Öğretmenin gönderdiği okuma içeriği varsa onu göster
+  // Öğretmenin bugün için yazdığı bölüm — en öncelikli kaynak
+  const lesson = data.lesson;
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const lessonPassage =
+    lesson?.passage && lesson.date === todayISO ? lesson.passage : null;
+
+  // Öğretmenin gönderdiği dış okuma görevi (haber, makale)
   const teacherReading = data.content.find((c) => c.skill === 'reading' && !c.done);
 
   const passage: ReadingPassage | null = useMemo(
-    () => (teacherReading ? null : pickPassage(data.profile.level)),
-    [teacherReading, data.profile.level]
+    () =>
+      lessonPassage || teacherReading ? null : pickPassage(data.profile.level),
+    [lessonPassage, teacherReading, data.profile.level]
   );
+
+  /* --- öğretmenin yazdığı bölüm: dokunulabilir kelimelerle --- */
+  if (lessonPassage) {
+    const lessonQuestions = lessonPassage.questions ?? [];
+    const lessonCorrect = lessonQuestions.reduce(
+      (n, q, i) => (answers[i] === q.answerIndex ? n + 1 : n),
+      0
+    );
+    const lessonAnswered =
+      lessonQuestions.length === 0 ||
+      lessonQuestions.every((_, i) => answers[i] !== undefined);
+
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        {lesson?.theme && (
+          <Text style={styles.themeTag}>Bugünün teması: {lesson.theme}</Text>
+        )}
+
+        <View style={styles.passageHeader}>
+          <Text style={styles.passageTitle}>
+            {lessonPassage.title}
+            {lessonPassage.chapter ? ` · Bölüm ${lessonPassage.chapter}` : ''}
+          </Text>
+          <Pressable
+            style={styles.speakButton}
+            onPress={() => toggleSpeech(lessonPassage.text)}
+          >
+            <Text style={styles.speakButtonText}>
+              {speaking ? '⏹ Durdur' : '🔊 Dinle'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.tapHint}>
+          Altı çizili kelimelere dokun — anlamını görür, tek dokunuşla kartlarına
+          eklersin.
+        </Text>
+
+        <View style={{ marginTop: spacing.md }}>
+          <TappableText
+            text={lessonPassage.text}
+            glossary={lesson?.glossary ?? []}
+            knownWords={data.cards.map((c) => c.word)}
+            onAddCard={(word, meaning) =>
+              update((current) => addCard(current, word, meaning))
+            }
+          />
+        </View>
+
+        {lessonQuestions.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Anlama soruları</Text>
+            {lessonQuestions.map((q, qi) => (
+              <View key={qi} style={styles.questionBlock}>
+                <Text style={styles.questionText}>{q.question}</Text>
+                {q.options.map((option, oi) => {
+                  const selected = answers[qi] === oi;
+                  const isCorrect = checked && oi === q.answerIndex;
+                  const isWrong = checked && selected && oi !== q.answerIndex;
+                  return (
+                    <Pressable
+                      key={option}
+                      disabled={checked}
+                      style={[
+                        styles.option,
+                        selected && styles.optionSelected,
+                        isCorrect && styles.optionCorrect,
+                        isWrong && styles.optionWrong,
+                      ]}
+                      onPress={() => setAnswers({ ...answers, [qi]: oi })}
+                    >
+                      <Text style={styles.optionText}>{option}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </>
+        )}
+
+        {!checked ? (
+          <Pressable
+            style={[styles.button, !lessonAnswered && styles.disabled]}
+            disabled={!lessonAnswered}
+            onPress={() => {
+              setChecked(true);
+              update((current) => recordSession(current, 6));
+            }}
+          >
+            <Text style={styles.buttonText}>
+              {lessonQuestions.length > 0 ? 'Kontrol et' : 'Okudum, tamamlandı'}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>
+              {lessonQuestions.length > 0
+                ? `${lessonCorrect} / ${lessonQuestions.length} doğru`
+                : 'Tamamlandı ✅'}
+            </Text>
+            <Text style={styles.noticeText}>
+              Bugünün kelimeleri bu metinde geçiyordu. Aynı kelimeler yazma ve
+              konuşma görevlerinde de karşına çıkacak — beş farklı yerde görmek,
+              beş kez ezberlemekten kalıcı.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    );
+  }
 
   function toggleSpeech(text: string) {
     if (speaking) {
@@ -258,6 +389,8 @@ function SpeakingTask() {
     suggested?.prompt ??
     'Talk for about 60 seconds: What did you do today, and what was the hardest part?';
 
+  const todayWords = useTodayWords();
+
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
 
   function speakPrompt() {
@@ -301,6 +434,7 @@ function SpeakingTask() {
         keyboardShouldPersistTaps="handled"
       >
         <PromptBox label="Konuşma görevi" text={prompt} focus={suggested?.targetError} />
+        <TargetWords words={todayWords} />
 
         <Pressable style={styles.speakButtonWide} onPress={speakPrompt}>
           <Text style={styles.speakButtonText}>
@@ -365,6 +499,30 @@ function PromptBox({
       <Text style={styles.promptLabel}>{label}</Text>
       <Text style={styles.prompt}>{text}</Text>
       {focus && <Text style={styles.promptFocus}>Odak: {focus}</Text>}
+    </View>
+  );
+}
+
+/**
+ * Günün hedef kelimeleri.
+ *
+ * Aynı kelimeler okuma metninde, yazma görevinde, konuşma görevinde ve
+ * kartlarda karşına çıkar. Ürünün kalıcılık mekaniği bu: beş farklı bağlamda
+ * karşılaşmak, beş kez ezberlemekten iyi.
+ */
+function TargetWords({ words }: { words: Array<{ word: string; meaning: string }> }) {
+  if (words.length === 0) return null;
+  return (
+    <View style={styles.targetWordsBox}>
+      <Text style={styles.targetWordsTitle}>
+        Bugünün kelimeleri — bunları kullanmaya çalış
+      </Text>
+      {words.map((w) => (
+        <View key={w.word} style={styles.targetWordRow}>
+          <Text style={styles.targetWordEn}>{w.word}</Text>
+          <Text style={styles.targetWordTr}> — {w.meaning}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -477,6 +635,37 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   passageTitle: { fontSize: 20, fontWeight: '700', color: colors.text, flex: 1 },
+  themeTag: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: spacing.sm,
+  },
+  tapHint: {
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 19,
+    marginTop: spacing.sm,
+  },
+  targetWordsBox: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  targetWordsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  targetWordRow: { flexDirection: 'row', marginBottom: spacing.xs + 2 },
+  targetWordEn: { fontSize: 15, fontWeight: '600', color: colors.accent },
+  targetWordTr: { fontSize: 15, color: colors.muted },
   speakButton: {
     backgroundColor: colors.accentSoft,
     borderRadius: radius.sm,

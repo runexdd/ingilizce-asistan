@@ -214,12 +214,20 @@ export function applyInbox(
     );
   }
 
+  // Günün dersi geldiyse hedef kelimeleri karta çevir — o gün tekrar edilecekler
+  if (inbox.lesson) {
+    for (const w of inbox.lesson.targetWords) {
+      next = addCard(next, w.word, w.meaning, w.example ?? null, null, today);
+    }
+  }
+
   return {
     ...next,
     suggestedTasks: inbox.nextTasks ?? next.suggestedTasks,
     content: inbox.content ?? next.content,
     weeklyReport: inbox.weeklyReport ?? next.weeklyReport,
     plan: inbox.plan ?? next.plan,
+    lesson: inbox.lesson ?? next.lesson,
     scores,
     sync: { ...next.sync, lastPullAt: new Date().toISOString() },
   };

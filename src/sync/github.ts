@@ -18,6 +18,7 @@ import { toISODate } from '../core/srs';
 import type {
   AppData,
   ContentSuggestion,
+  DailyLesson,
   Feedback,
   SuggestedTask,
   TaskRecord,
@@ -106,6 +107,11 @@ export interface InboxPayload {
   plan?: TeacherPlan;
   /** Öğretmenin bugünkü puanlaması */
   score?: TeacherScore;
+  /**
+   * Günün dersi — tema, hedef kelimeler, okuma parçası ve sözlük.
+   * Tüm görevler bu kelimelere bağlanır.
+   */
+  lesson?: DailyLesson;
 }
 
 /* ------------------------------------------------------------- yardımcı */
