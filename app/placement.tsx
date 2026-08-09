@@ -291,18 +291,37 @@ export default function PlacementScreen() {
           </View>
         )}
 
+        {/**
+          * Parçalar **cümle olarak** gösterilmeli.
+          *
+          * Önce alt alta ayrı düğmelerdi ve kullanıcı haklı olarak şikâyet etti:
+          * *"hangi parça yanlış gibi sorular geliyor, ne olduğu belli değil,
+          * metin yok, cevabı nasıl vereceğiz."* Ekranda "He" / "are" /
+          * "my friend" diye üç kopuk kutu görünüyordu; cümlenin kendisi hiçbir
+          * yerde yazmıyordu, dolayısıyla hatayı bulmak imkânsızdı.
+          *
+          * Şimdi parçalar yan yana, okunacak sırada duruyor: satır bir cümle
+          * gibi okunuyor ve her parça ayrı ayrı dokunulabilir.
+          */}
         {question.format === 'spot' && (
           <View style={styles.options}>
-            {question.segments.map((segment, index) => (
-              <Pressable
-                key={segment + index}
-                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
-                onPress={() => submit({ index })}
-              >
-                <Text style={styles.optionText}>{segment}</Text>
-              </Pressable>
-            ))}
-            <Text style={styles.helper}>Yanlış olduğunu düşündüğün parçaya dokun</Text>
+            <View style={styles.sentenceRow}>
+              {question.segments.map((segment, index) => (
+                <Pressable
+                  key={segment + index}
+                  style={({ pressed }) => [
+                    styles.segment,
+                    pressed && styles.segmentPressed,
+                  ]}
+                  onPress={() => submit({ index })}
+                >
+                  <Text style={styles.segmentText}>{segment}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.helper}>
+              Cümleyi oku, yanlış olduğunu düşündüğün parçaya dokun
+            </Text>
           </View>
         )}
 
@@ -330,6 +349,14 @@ export default function PlacementScreen() {
             <Pressable style={styles.skip} onPress={() => submit({ text: '' })}>
               <Text style={styles.skipText}>Bilmiyorum, geç</Text>
             </Pressable>
+          </View>
+        )}
+
+        {/* Hangi cümlenin kurulacağı yazmazsa soru tahmin oyununa dönüyor */}
+        {question.format === 'order' && question.hint && (
+          <View style={styles.targetBox}>
+            <Text style={styles.targetLabel}>KURULACAK CÜMLE</Text>
+            <Text style={styles.targetText}>{question.hint}</Text>
           </View>
         )}
 
@@ -580,6 +607,41 @@ const styles = StyleSheet.create({
   optionPressed: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   optionText: { fontSize: 16, color: colors.text },
   helper: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+
+  /* "Hangi parça yanlış?" — parçalar cümle gibi yan yana dizilir */
+  sentenceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  segment: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  segmentPressed: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  segmentText: { fontSize: 17, color: colors.text },
+
+  /* Kelime dizme sorusunda hedef cümlenin Türkçesi */
+  targetBox: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  targetLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: colors.accent,
+    marginBottom: 4,
+  },
+  targetText: { fontSize: 16, color: colors.text, lineHeight: 22 },
 
   input: {
     backgroundColor: colors.card,

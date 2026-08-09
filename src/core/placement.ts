@@ -56,6 +56,16 @@ export interface OrderQuestion extends BaseQuestion {
   format: 'order';
   /** Doğru sıradaki kelimeler; arayüz karıştırıp gösterir */
   words: string[];
+  /**
+   * Kurulacak cümlenin Türkçesi — **zorunlu sayılmalı.**
+   *
+   * Kullanıcı *"ne olduğu belli değil, cevabı nasıl vereceğiz"* dedi. Sadece
+   * karışık kelimeler verilince hangi cümlenin hedeflendiği belirsiz kalıyor;
+   * özellikle C1-C2'deki devrik yapılarda birden fazla akla yatkın diziliş var
+   * ve kullanıcı doğru İngilizce kurduğu hâlde yanlış sayılabiliyor. Türkçesi
+   * hedefi tek noktaya sabitliyor — ölçtüğümüz şey zaten kelime sırası.
+   */
+  hint?: string;
 }
 
 /** Hatalı parçayı bulma — hata fark etme becerisi */
@@ -92,8 +102,8 @@ export const QUESTION_BANK: PlacementQuestion[] = [
   { id: 'a1f1', level: 'A1', skill: 'grammar', format: 'fill', prompt: 'My name ___ Omer.', accept: ['is'], hint: 'tek kelime' },
   { id: 'a1f2', level: 'A1', skill: 'grammar', format: 'fill', prompt: 'They ___ from Turkey.', accept: ['are'], hint: 'tek kelime' },
   { id: 'a1f3', level: 'A1', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Ben bir öğrenciyim." → İngilizce:', accept: ['i am a student', "i'm a student", 'im a student'] },
-  { id: 'a1o1', level: 'A1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['I', 'go', 'to', 'school', 'every', 'day'] },
-  { id: 'a1o2', level: 'A1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['She', 'does', 'not', 'like', 'coffee'] },
+  { id: 'a1o1', level: 'A1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['I', 'go', 'to', 'school', 'every', 'day'], hint: 'Her gün okula giderim.' },
+  { id: 'a1o2', level: 'A1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['She', 'does', 'not', 'like', 'coffee'], hint: 'O kahve sevmez.' },
   { id: 'a1s1', level: 'A1', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['He', 'are', 'my friend'], answerIndex: 1 },
   { id: 'a1s2', level: 'A1', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['I', 'no like', 'this song'], answerIndex: 1 },
   { id: 'a1r1', level: 'A1', skill: 'reading', format: 'choice', passage: 'Tom is a student. He gets up at seven. He goes to school by bus.', prompt: 'How does Tom go to school?', options: ['By car', 'By bus', 'On foot', 'By train'], answerIndex: 1 },
@@ -107,8 +117,8 @@ export const QUESTION_BANK: PlacementQuestion[] = [
   { id: 'a2f1', level: 'A2', skill: 'grammar', format: 'fill', prompt: 'Last night we ___ (watch) a film.', accept: ['watched'], hint: 'geçmiş zaman' },
   { id: 'a2f2', level: 'A2', skill: 'grammar', format: 'fill', prompt: 'I am ___ to call her tomorrow.', accept: ['going'], hint: 'tek kelime' },
   { id: 'a2f3', level: 'A2', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Hava çok soğuk." → İngilizce:', accept: ['the weather is very cold', "it's very cold", 'it is very cold'] },
-  { id: 'a2o1', level: 'A2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['I', 'have', 'never', 'been', 'to', 'London'] },
-  { id: 'a2o2', level: 'A2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['We', 'are', 'going', 'to', 'move', 'next', 'month'] },
+  { id: 'a2o1', level: 'A2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['I', 'have', 'never', 'been', 'to', 'London'], hint: "Hiç Londra'ya gitmedim." },
+  { id: 'a2o2', level: 'A2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['We', 'are', 'going', 'to', 'move', 'next', 'month'], hint: 'Önümüzdeki ay taşınacağız.' },
   { id: 'a2s1', level: 'A2', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['She', 'did not went', 'to the party'], answerIndex: 1 },
   { id: 'a2s2', level: 'A2', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['There is', 'many people', 'in the room'], answerIndex: 1 },
   { id: 'a2r1', level: 'A2', skill: 'reading', format: 'choice', passage: 'The museum opens at 10 a.m. and closes at 6 p.m. It is closed on Mondays. Tickets cost 8 euros, but students pay only 4 euros.', prompt: 'How much does a student pay?', options: ['8 euros', '4 euros', 'Nothing', '10 euros'], answerIndex: 1 },
@@ -122,8 +132,8 @@ export const QUESTION_BANK: PlacementQuestion[] = [
   { id: 'b1f1', level: 'B1', skill: 'grammar', format: 'fill', prompt: "I've been waiting ___ two hours.", accept: ['for'], hint: 'tek kelime' },
   { id: 'b1f2', level: 'B1', skill: 'vocabulary', format: 'fill', prompt: "I couldn't ___ out why the machine stopped. (çözmek)", accept: ['figure', 'work'], hint: 'tek kelime' },
   { id: 'b1f3', level: 'B1', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Onu görmeyi dört gözle bekliyorum." → İngilizce:', accept: ['i am looking forward to seeing him', "i'm looking forward to seeing him", 'i am looking forward to seeing her', "i'm looking forward to seeing her"] },
-  { id: 'b1o1', level: 'B1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['She', 'asked', 'me', 'where', 'I', 'was', 'going'] },
-  { id: 'b1o2', level: 'B1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['The', 'book', 'was', 'given', 'to', 'me', 'by', 'my', 'teacher'] },
+  { id: 'b1o1', level: 'B1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['She', 'asked', 'me', 'where', 'I', 'was', 'going'], hint: 'Bana nereye gittiğimi sordu.' },
+  { id: 'b1o2', level: 'B1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['The', 'book', 'was', 'given', 'to', 'me', 'by', 'my', 'teacher'], hint: 'Kitap bana öğretmenim tarafından verildi.' },
   { id: 'b1s1', level: 'B1', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['I have seen', 'him', 'yesterday'], answerIndex: 2 },
   { id: 'b1s2', level: 'B1', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['She suggested', 'to go', 'to the beach'], answerIndex: 1 },
   { id: 'b1r1', level: 'B1', skill: 'reading', format: 'choice', passage: 'Although the company had planned to launch the product in March, several delays in testing meant it finally reached customers in June.', prompt: 'When did customers actually get the product?', options: ['In March', 'In June', 'During testing', 'It was cancelled'], answerIndex: 1 },
@@ -137,8 +147,8 @@ export const QUESTION_BANK: PlacementQuestion[] = [
   { id: 'b2f1', level: 'B2', skill: 'grammar', format: 'fill', prompt: 'I would rather you ___ tell anyone about this.', accept: ["didn't", 'did not'], hint: 'olumsuz' },
   { id: 'b2f2', level: 'B2', skill: 'grammar', format: 'fill', prompt: 'He denied ___ (take) the money.', accept: ['taking'], hint: 'tek kelime' },
   { id: 'b2f3', level: 'B2', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Keşke ona söylemeseydim." → İngilizce:', accept: ["i wish i hadn't told him", 'i wish i had not told him', "i wish i hadn't told her", 'i wish i had not told her'] },
-  { id: 'b2o1', level: 'B2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['Not', 'until', 'later', 'did', 'we', 'realise', 'the', 'mistake'] },
-  { id: 'b2o2', level: 'B2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['The', 'more', 'you', 'practise', 'the', 'better', 'you', 'get'] },
+  { id: 'b2o1', level: 'B2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['Not', 'until', 'later', 'did', 'we', 'realise', 'the', 'mistake'], hint: 'Hatayı ancak sonradan fark ettik.' },
+  { id: 'b2o2', level: 'B2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['The', 'more', 'you', 'practise', 'the', 'better', 'you', 'get'], hint: 'Ne kadar çok pratik yaparsan o kadar iyi olursun.' },
   { id: 'b2s1', level: 'B2', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['If I would have known', 'about the meeting', 'I would have come'], answerIndex: 0 },
   { id: 'b2s2', level: 'B2', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['Despite of', 'the rain', 'we went out'], answerIndex: 0 },
   { id: 'b2r1', level: 'B2', skill: 'reading', format: 'choice', passage: 'While remote work has reduced commuting time for many employees, critics argue that it has blurred the boundary between professional and private life, leaving some workers effectively on call at all hours.', prompt: 'What concern do critics raise?', options: ['Commuting takes longer', 'Work and personal life overlap too much', 'Employees are less productive', 'Offices are becoming empty'], answerIndex: 1 },
@@ -152,8 +162,8 @@ export const QUESTION_BANK: PlacementQuestion[] = [
   { id: 'c1f1', level: 'C1', skill: 'grammar', format: 'fill', prompt: 'Had we known about the risk, we ___ have acted differently.', accept: ['would'], hint: 'tek kelime' },
   { id: 'c1f2', level: 'C1', skill: 'grammar', format: 'fill', prompt: '___ the weather, the event will take place as planned. (Ne olursa olsun)', accept: ['regardless of', 'irrespective of', 'whatever'], hint: 'iki kelime olabilir' },
   { id: 'c1f3', level: 'C1', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Söylediklerini hafife almalısın." → İngilizce (deyim):', accept: ['you should take what he says with a pinch of salt', 'you should take what he says with a grain of salt', 'take what he says with a pinch of salt', 'take what he says with a grain of salt'] },
-  { id: 'c1o1', level: 'C1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['Rarely', 'have', 'I', 'seen', 'such', 'a', 'convincing', 'argument'] },
-  { id: 'c1o2', level: 'C1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['It', 'was', 'not', 'until', 'much', 'later', 'that', 'she', 'understood'] },
+  { id: 'c1o1', level: 'C1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['Rarely', 'have', 'I', 'seen', 'such', 'a', 'convincing', 'argument'], hint: 'Nadiren bu kadar ikna edici bir argüman gördüm.' },
+  { id: 'c1o2', level: 'C1', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['It', 'was', 'not', 'until', 'much', 'later', 'that', 'she', 'understood'], hint: 'Ancak çok sonra anladı.' },
   { id: 'c1s1', level: 'C1', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['Scarcely had we sat down', 'than', 'the phone rang'], answerIndex: 1 },
   { id: 'c1s2', level: 'C1', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['The committee recommended', 'that the rule is changed', 'immediately'], answerIndex: 1 },
   { id: 'c1r1', level: 'C1', skill: 'reading', format: 'choice', passage: 'The author concedes that the reform delivered short-term gains, yet maintains that these were achieved at the cost of long-term stability — a trade-off she considers indefensible.', prompt: "What is the author's overall position?", options: ['Fully supportive of the reform', 'Critical, despite acknowledging some benefits', 'Neutral and undecided', 'Supportive only of the long-term effects'], answerIndex: 1 },
@@ -167,8 +177,8 @@ export const QUESTION_BANK: PlacementQuestion[] = [
   { id: 'c2f1', level: 'C2', skill: 'grammar', format: 'fill', prompt: '___ it not for his intervention, the project would have collapsed.', accept: ['were'], hint: 'tek kelime' },
   { id: 'c2f2', level: 'C2', skill: 'vocabulary', format: 'fill', prompt: 'The argument, ___ compelling, ultimately rests on a false premise. (görünüşte)', accept: ['seemingly', 'ostensibly', 'apparently'], hint: 'tek kelime' },
   { id: 'c2f3', level: 'C2', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Bu iş bana hiç uygun değil." → İngilizce (doğal söyleyiş):', accept: ['this job is not for me', "this job isn't for me", 'this is not my cup of tea', "this isn't my cup of tea"] },
-  { id: 'c2o1', level: 'C2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['Seldom', 'has', 'a', 'decision', 'provoked', 'such', 'fierce', 'debate'] },
-  { id: 'c2o2', level: 'C2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['So', 'convincing', 'was', 'her', 'argument', 'that', 'nobody', 'objected'] },
+  { id: 'c2o1', level: 'C2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['Seldom', 'has', 'a', 'decision', 'provoked', 'such', 'fierce', 'debate'], hint: 'Nadiren bir karar bu kadar sert bir tartışma başlatmıştır.' },
+  { id: 'c2o2', level: 'C2', skill: 'grammar', format: 'order', prompt: 'Kelimeleri doğru sıraya diz:', words: ['So', 'convincing', 'was', 'her', 'argument', 'that', 'nobody', 'objected'], hint: 'Argümanı o kadar ikna ediciydi ki kimse itiraz etmedi.' },
   { id: 'c2s1', level: 'C2', skill: 'grammar', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['Under no circumstances', 'you should', 'share this file'], answerIndex: 1 },
   { id: 'c2s2', level: 'C2', skill: 'vocabulary', format: 'spot', prompt: 'Hangi parça yanlış?', segments: ['He made', 'a big mistake', 'in purpose'], answerIndex: 2 },
   { id: 'c2r1', level: 'C2', skill: 'reading', format: 'choice', passage: 'For all its rhetorical flourish, the speech offered little in the way of substance; those hoping for concrete commitments left the hall much as they had entered it.', prompt: 'What does the writer imply about the speech?', options: ['It was both eloquent and substantial', 'It was well delivered but lacked real content', 'It was poorly written and badly received', "It exceeded the audience's expectations"], answerIndex: 1 },
