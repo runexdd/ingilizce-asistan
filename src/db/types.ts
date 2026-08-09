@@ -63,6 +63,11 @@ export interface Card {
   lastResult?: 'correct' | 'close' | 'wrong';
   /** Son çalışıldığı tarih, 'YYYY-MM-DD' */
   lastReviewedAt?: string;
+  /**
+   * Son cevabın tam zamanı (ISO). Gün içinde kartların sırayla dönmesi için:
+   * en uzun süredir cevaplanmayan kart öne gelir, aynı kart üst üste çıkmaz.
+   */
+  lastAnsweredAt?: string;
   /** Telaffuz aşaması ilk kez geçildiğinde damgalanır, 'YYYY-MM-DD' */
   spokenOkAt?: string;
 }

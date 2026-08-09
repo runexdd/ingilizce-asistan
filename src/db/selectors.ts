@@ -53,7 +53,7 @@ export function getStudyQueue(
       : []
   );
 
-  const isNew = (card: Card) => card.repetitions === 0 && !card.lastReviewedAt;
+  const isNew = (card: Card) => card.repetitions === 0 && !card.lastAnsweredAt;
   const isTodays = (card: Card) => lessonWords.has(card.word.trim().toLowerCase());
 
   // Günün kelimeleri yeni kelime kotasını önce doldursun
@@ -62,10 +62,27 @@ export function getStudyQueue(
     .sort((a, b) => Number(isTodays(b)) - Number(isTodays(a)))
     .slice(0, Math.max(0, dailyNewWords));
 
-  const review = due.filter((c) => !isNew(c));
+  const started = due.filter((c) => !isNew(c));
+  const selected = [
+    ...fresh.filter(isTodays),
+    ...fresh.filter((c) => !isTodays(c)),
+    ...started,
+  ];
 
-  // Sıralama: günün kelimeleri → diğer yeniler → tekrarlar
-  return [...fresh.filter(isTodays), ...fresh.filter((c) => !isTodays(c)), ...review];
+  /**
+   * Basamağa göre sırala: bütün kelimeler önce 1. aşamadan (tanıma) geçer,
+   * sonra hepsi 2'ye (yazma), sonra 3'e (telaffuz). Kullanıcının istediği akış
+   * bu: *"o 5 kelime için ilk olarak seçenek kısmı gelmeli, sonra 2. aşama,
+   * son aşama telaffuz."*
+   *
+   * Aynı basamakta olanlar arasında en uzun süredir cevaplanmayan öne gelir;
+   * böylece aynı kart üst üste çıkmaz, beşi sırayla döner.
+   */
+  return selected.sort((a, b) => {
+    const stageDiff = (a.stage ?? 1) - (b.stage ?? 1);
+    if (stageDiff !== 0) return stageDiff;
+    return (a.lastAnsweredAt ?? '').localeCompare(b.lastAnsweredAt ?? '');
+  });
 }
 
 /**

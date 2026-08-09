@@ -93,26 +93,53 @@ export function answerCard(
   verdict: AnswerVerdict,
   today: Date = new Date()
 ): AppData {
-  const grade: ReviewGrade =
-    verdict === 'correct' ? 'good' : verdict === 'close' ? 'good' : 'again';
   const iso = toISODate(today);
+  const now = new Date().toISOString();
 
   return {
     ...data,
     cards: data.cards.map((card) => {
       if (card.id !== cardId) return card;
-      const schedule = reviewCard(card, grade, today);
-      const stage = nextStage(card.stage ?? 1, verdict);
+
+      const current = (card.stage ?? 1) as 1 | 2 | 3;
+      const stage = nextStage(current, verdict);
+
+      /**
+       * Kelime **üç basamağı da aynı gün** bitirmeli.
+       *
+       * Aksi hâlde SM-2 kartı ilk doğru cevapta yarına atıyor ve kullanıcı o
+       * gün kelimeyi ne yazıyor ne telaffuz ediyor — ürünün istediği akış
+       * bozuluyor. Bu yüzden tekrar takvimi yalnızca **telaffuz aşaması
+       * geçildiğinde** işliyor; ara basamaklarda kart bugüne ait kalıyor ve
+       * kuyruğun sonuna gidiyor.
+       */
+      const graduated = current === 3 && verdict === 'correct';
+
+      if (!graduated) {
+        return {
+          ...card,
+          stage,
+          dueDate: iso,
+          lastResult: verdict,
+          lastReviewedAt: iso,
+          lastAnsweredAt: now,
+        };
+      }
+
+      const grade: ReviewGrade = 'good';
       return {
         ...card,
-        ...schedule,
-        stage,
+        ...reviewCard(card, grade, today),
+        /**
+         * Bir sonraki karşılaşmada kelime **yazma** basamağından sorulur.
+         * Üç basamaklı merdiven kelimenin tanıştığı gün içindir; sonraki
+         * tekrarlarda ölçülmesi gereken şey üretme, yani yazabilmek.
+         */
+        stage: 2,
         lastResult: verdict,
         lastReviewedAt: iso,
-        // Telaffuz aşamasını ilk kez geçtiği an damgalanır
-        spokenOkAt:
-          card.spokenOkAt ??
-          ((card.stage ?? 1) === 3 && verdict === 'correct' ? iso : undefined),
+        lastAnsweredAt: now,
+        spokenOkAt: card.spokenOkAt ?? iso,
       };
     }),
   };
