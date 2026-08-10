@@ -408,16 +408,48 @@ const CATALOG: CatalogItem[] = [...SHARED_CATALOG, ...A1_CATALOG];
  * `keysFromNote` yazdığını en yakın anahtarlara bağlıyor (tiyatro →
  * dizi + dram); bağlayamazsa hiçbir şey uydurmuyor.
  */
-function tasteKeys(tastes: Tastes | undefined): Set<string> {
-  if (!tastes) return new Set();
-  return new Set([
-    ...tastes.areas,
-    ...tastes.music,
-    ...tastes.screen,
-    ...tastes.sports,
-    ...tastes.other,
-    ...keysFromNote(tastes.note),
-  ]);
+function tasteKeys(tastes: Tastes | undefined): Map<string, number> {
+  const w = new Map<string, number>();
+  if (!tastes) return w;
+
+  /** En yüksek ağırlık kazanır — bir anahtar iki yerden gelirse güçlüsü sayılır */
+  const ekle = (values: string[], agirlik: number) => {
+    for (const v of values) w.set(v, Math.max(w.get(v) ?? 0, agirlik));
+  };
+
+  /**
+   * **Asıl ilgi alanları.** Konuyu bunlar belirler.
+   */
+  ekle(tastes.areas, 1);
+  ekle(tastes.music, 1);
+  ekle(tastes.screen, 1);
+  ekle(tastes.sports, 1);
+
+  /**
+   * **Kullanım ortamı — yarım ağırlık.**
+   *
+   * ⚠️ Buranın tam ağırlıkta olması ölçülmüş bir hataydı. "Günlük hayat,
+   * arkadaş sohbeti" seçen kullanıcı hangi hobiyi seçerse seçsin Easy
+   * English sokak röportajı alıyordu; çünkü o içerik tek etiketli ve
+   * `gunluk` anahtarını tam tutturuyordu. Ortam seçmek bir konu tercihi
+   * değildir: "günlük hayatta İngilizce kullanacağım" diyen biri bilimden
+   * vazgeçmiş olmaz.
+   *
+   * Yarım ağırlık şunu sağlıyor: gerçek bir ilgi alanı varsa o kazanır,
+   * yoksa ortam yine de tarafsız yedekten iyi bir seçim yapar.
+   */
+  ekle(tastes.other, 0.5);
+
+  /**
+   * **Serbest metinden çıkarılan anahtarlar — 0.8.**
+   *
+   * Kullanıcının açıkça seçtiği kadar kesin değil (biz çıkardık), ama
+   * hiç yokmuş gibi de davranılmaz. Tam ağırlık verirsek "tiyatro" yazan
+   * birinin çıkarımı, açıkça seçtiği "bilim"le eşit olur.
+   */
+  ekle(keysFromNote(tastes.note), 0.8);
+
+  return w;
 }
 
 /** Tarihten türetilen kararlı sayı — aynı gün aynı öneri, ertesi gün başkası */
@@ -427,27 +459,39 @@ function daySeed(date: string): number {
   return Math.abs(hash);
 }
 
-/** Bir içeriğin kullanıcının zevkleriyle kaç noktada kesiştiği */
-function tasteScore(item: CatalogItem, keys: Set<string>): number {
-  return item.tastes.filter((t) => keys.has(t)).length;
-}
-
 /**
- * **İsabet oranı** — eşleşme sayısı değil, eşleşmenin ne kadar yerinde olduğu.
+ * Bir içeriğin kullanıcının zevkleriyle kesişme **ağırlığı.**
  *
- * ⚠️ Bu ölçü olmadan **geniş etiketli içerik her şeyi eziyor.** Ölçülen örnek:
- * "sözlü şarkı videosu" 11 zevk anahtarı taşıyordu; metal + süper kahraman
- * seçen kullanıcıda 2 puan alıp, süper kahraman çizgi dizisinin 1 puanını
- * geçiyordu. Sonuç: süper kahraman seçen adam süper kahraman göremiyordu.
- * Aynı hatayı daha önce sıralama tarafında yakalamıştık; etiket sayısı
- * tarafında geri geldi.
+ * ## Bu ölçü iki kez yanlış kuruldu, ikisi de ekranda görüldü
  *
- * Oran = eşleşen / öğenin toplam etiketi. Dar ve tam isabet eden içerik,
- * her şeye biraz değen içeriği yener.
+ * **1. deneme — eşleşme sayısı.** Geniş etiketli içerik her şeyi eziyordu:
+ * "sözlü şarkı videosu" 11 anahtar taşıyor, metal + süper kahraman seçende
+ * 2 puan alıp süper kahraman çizgi dizisinin 1 puanını geçiyordu. Süper
+ * kahraman seçen adam süper kahraman göremiyordu.
+ *
+ * **2. deneme — isabet oranı (eşleşen / toplam etiket).** Bu sefer tersi
+ * oldu: **tek etiketli içerik üç etiketliyi hep yendi.** Kullanıcı "Bilim" +
+ * "Günlük hayat" seçtiğinde
+ *
+ *     Easy English  [gunluk]                 -> 1/1 = 1.00   ← hep kazanıyor
+ *     BBC Earth     [belgesel, bilim, tarih] -> 1/3 = 0.33
+ *
+ * çıkıyordu ve kullanıcı *"günün sohbeti Easy English sokak röportajları fix
+ * geliyor"* dedi. Haklıydı: bilim seçen adam bilim göremiyordu.
+ *
+ * ## Doğrusu: anahtarın **ne olduğu** önemli
+ *
+ * İki hata da aynı kökten: bütün anahtarlar eşit sayılıyordu. Oysa
+ * `tastes.other` bir hobi değil, **kullanım ortamı** — "günlük hayatta
+ * İngilizce kullanmak istiyorum" demek "belgesel yerine sokak röportajı
+ * izlemek istiyorum" demek değildir. Ortam, konu seçimini belirlemez;
+ * eşitlik bozulduğunda tarafı tayin eder.
+ *
+ * Bu yüzden puan = **eşleşen anahtarların ağırlık toplamı** (bkz.
+ * `tasteWeights`), eşitlikte dar etiketli içerik kazanır.
  */
-function tasteRatio(item: CatalogItem, keys: Set<string>): number {
-  if (item.tastes.length === 0) return 0;
-  return tasteScore(item, keys) / item.tastes.length;
+function tasteScore(item: CatalogItem, weights: Map<string, number>): number {
+  return item.tastes.reduce((sum, t) => sum + (weights.get(t) ?? 0), 0);
 }
 
 /**
@@ -465,22 +509,24 @@ function tasteRatio(item: CatalogItem, keys: Set<string>): number {
  */
 function pickBest(
   pool: CatalogItem[],
-  keys: Set<string>,
+  keys: Map<string, number>,
   seed: number
 ): CatalogItem | null {
   if (pool.length === 0) return null;
 
   /**
-   * Önce isabet oranı, eşitlikte eşleşme sayısı. Sıra önemli: yalnızca
-   * sayıya bakmak geniş etiketli içeriği kazandırıyor, yalnızca orana
-   * bakmak da iki etiketten ikisini de tutturan içeriği tek etiketliyle
-   * eşitliyor. İkisi birlikte doğru sonucu veriyor.
+   * Önce ağırlık toplamı, **eşitlikte dar etiketli** içerik.
+   *
+   * İkinci ölçüt şart: "sözlü şarkı videosu" ile "Justice League Action"
+   * metal + süper kahraman seçende eşit puan alabiliyor; o durumda 2
+   * etiketli olan 11 etiketliyi yenmeli, yoksa her şeye biraz değen içerik
+   * öne çıkıyor.
    */
-  const bestRatio = Math.max(...pool.map((i) => tasteRatio(i, keys)));
-  if (bestRatio > 0) {
-    const byRatio = pool.filter((i) => tasteRatio(i, keys) === bestRatio);
-    const bestCount = Math.max(...byRatio.map((i) => tasteScore(i, keys)));
-    const winners = byRatio.filter((i) => tasteScore(i, keys) === bestCount);
+  const en = Math.max(...pool.map((i) => tasteScore(i, keys)));
+  if (en > 0) {
+    const esitler = pool.filter((i) => tasteScore(i, keys) === en);
+    const enDar = Math.min(...esitler.map((i) => i.tastes.length));
+    const winners = esitler.filter((i) => i.tastes.length === enDar);
     return winners[seed % winners.length];
   }
 

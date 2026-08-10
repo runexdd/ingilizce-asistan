@@ -652,10 +652,17 @@ export const A1_CATALOG: CatalogItem[] = [
     title: 'Sözlü (lyrics) video · sevdiğin şarkı',
     where: 'YouTube — şarkı adının yanına "lyrics" yazarak ara',
     levels: ['A1'],
-    tastes: [
-      'muzik', 'rock', 'metal', 'pop', 'rap', 'elektronik',
-      'caz', 'blues', 'klasik', 'country', 'akustik',
-    ],
+    /**
+     * ⚠️ Yalnızca `muzik` — tür anahtarları bilerek yok.
+     *
+     * Müzik türü sorusu artık **herkese** soruluyor (zorunlu). Tür
+     * anahtarları burada da dursaydı, müziği ilgi alanı olarak seçmemiş
+     * herkes izleme kanalında da müzik videosu alırdı: zorunlu bir cevap
+     * ilgi alanı gibi davranmış olurdu. Şarkı kanalında türler zaten tek
+     * tek karşılanıyor; buraya düşen iş "müzikle ilgileniyorum" diyene
+     * izleme içeriği vermek.
+     */
+    tastes: ['muzik'],
     why: 'Müzik seviyorsun. Sözlü video, şarkıyı okuyarak dinlemeni sağlıyor — A1\'de duyduğunu yazıya bağlamak en hızlı ilerleten alıştırmalardan biri.',
     instruction: 'Bugünün şarkısını önce sözsüz dinle, sonra sözlü videoyla bir kez daha. Tanıdığın kelimeleri işaretle.',
     words: [
