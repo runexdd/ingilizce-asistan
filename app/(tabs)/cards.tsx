@@ -516,7 +516,9 @@ function WriteStage({
       {support.revealed && !verdict && (
         <View style={styles.supportBox}>
           <Text style={styles.supportLabel}>
-            {attempts === 1 ? 'İLK HARF' : 'İLK İKİ HARF'}
+            {support.revealCount === 1
+              ? 'İLK HARF'
+              : `İLK ${support.revealCount} HARF`}
           </Text>
           <Text style={styles.revealed}>{support.revealed}</Text>
         </View>

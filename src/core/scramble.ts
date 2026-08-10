@@ -22,6 +22,14 @@ export interface WriteSupport {
   scrambled: string | null;
   /** Baştan açılan harfler — "t o _ _ _" */
   revealed: string | null;
+  /**
+   * Kaç harf açıldı — ekrandaki etiket bunu yazar.
+   *
+   * ⚠️ Etiket bir ara sabitti ("İLK HARF" / "İLK İKİ HARF") ve açılan harf
+   * sayısı orantılı hâle gelince yalan söylemeye başladı: ekranda üç harf
+   * açıkken "İLK HARF" yazıyordu.
+   */
+  revealCount: number;
   /** Son çare: örnek cümlede kelimenin yeri boş bırakılmış hâli */
   hint: string | null;
   /** Bundan sonra bir deneme hakkı daha var mı */
@@ -143,10 +151,12 @@ export function blankOutExample(example: string, word: string): string | null {
  * Deneme sayısına göre açılacak destek.
  *
  * 0 yanlış → sadece karışık harfler
- * 1 yanlış → ilk harf açılır
- * 2 yanlış → ilk iki harf açılır
- * 3 yanlış → ipucu cümlesi (örnek cümle, kelime boş bırakılmış)
+ * 1 yanlış → harflerin ~%35'i açılır
+ * 2 yanlış → ~%60'ı açılır + ipucu cümlesi (kelime boş bırakılmış örnek)
+ * 3 yanlış → ~%75'i açılır
  * 4 yanlış → hak biter, doğru cevap gösterilir
+ *
+ * Oranlar sabit sayı yerine kelime uzunluğuna bağlı; gerekçesi aşağıda.
  */
 export function supportFor(
   answer: string,
@@ -190,6 +200,7 @@ export function supportFor(
   return {
     scrambled,
     revealed,
+    revealCount: attempts >= 1 ? revealCount : 0,
     hint,
     canRetry: attempts < MAX_ATTEMPTS,
     helped: attempts > 0,
