@@ -573,6 +573,26 @@ export function startConversation(
   return { ...data, conversations: [...data.conversations, record] };
 }
 
+/**
+ * "Başka bir sohbet ver" — bugünün sohbet varyantını bir ilerletir.
+ *
+ * ⚠️ **Sohbet başladıysa değiştirmiyoruz.** Kayıt açılırken planın ilk
+ * repliği mesajlara yazılıyor ve turlar kayıttaki sayaçla yürüyor; planı
+ * ortadan değiştirmek ekrandaki konuşmayla senaryoyu birbirinden ayırır.
+ * Bu yüzden düğme yalnızca sohbet başlamadan önce iş görüyor.
+ */
+export function nextConversationVariant(
+  data: AppData,
+  today: Date = new Date()
+): AppData {
+  const iso = toISODate(today);
+  if (data.conversations.some((c) => c.date === iso)) return data;
+
+  const current =
+    data.conversationVariant?.date === iso ? data.conversationVariant.index : 0;
+  return { ...data, conversationVariant: { date: iso, index: current + 1 } };
+}
+
 export function addConversationMessage(
   data: AppData,
   conversationId: string,
@@ -822,6 +842,14 @@ export function applyInbox(
     plan: sanitizePlan(inbox.plan, next) ?? next.plan,
     lesson: inbox.lesson ?? next.lesson,
     conversationPlan: inbox.conversation ?? next.conversationPlan,
+    conversationAlternatives:
+      inbox.conversationAlternatives ?? next.conversationAlternatives,
+    /**
+     * Yeni paket geldiyse "kaçıncı sohbet" sayacı sıfırlanıyor: öğretmenin
+     * yeni yazdığı asıl sohbet gösterilsin, kullanıcı dün üç kez "başka bir
+     * sohbet" dedi diye bugün de üçüncü varyanttan başlamasın.
+     */
+    conversationVariant: inbox.conversation ? undefined : next.conversationVariant,
     conversations,
     scores,
     /**

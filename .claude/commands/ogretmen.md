@@ -613,6 +613,28 @@ derin sorulur (A2 anlatır, B1 gerekçelendirir, B2 karşı argüman üretir).
 - Zevk seçilmemişse nötr bir soru sor ve `note` içinde Ayarlar → Zevklerim'i
   doldurmasını iste.
 
+#### `tastes.note` — serbest metni **ciddiye al**
+
+Zevk sihirbazının her adımında "✏️ Kendim yazmak istiyorum" seçeneği var.
+Yazdığı şey pakete `tastes.note` olarak geliyor ("Kendi yazdığı: tiyatro").
+
+Kullanıcının sorusu buydu: *"orada mesela tiyatro yok, tiyatro yazıyor — o
+kelimeye uygun bir seçenek verebilir mi?"* **Cevap sensin.** Uygulama serbest
+metni kaba bir eşanlam tablosuyla en yakın anahtara bağlıyor
+(`src/core/tastematch.ts`: tiyatro → dizi + dram) ya da hiç bağlayamazsa
+kelimeyi görevin içine gömüyor (*"Talk about tiyatro…"*). İkisi de idare
+eder; **gerçek karşılığı sen verirsin.**
+
+- Yazdığı alana **gerçekten uyan** bir içerik öner: tiyatro yazana sahne
+  oyunu kaydı, bir müzikal, oyunculuk üstüne kısa bir video.
+- Sohbeti ve konuşma görevini o alandan kur.
+- Listedeki hazır seçeneklerden birine **zorla oturtma.** "Tiyatro yazmış,
+  demek ki dizi seviyor" diye dizi önerirsen kullanıcı yazmasının bir işe
+  yaramadığını görür — o kutunun bütün amacı buydu.
+- Alan hakkında emin değilsen (niş bir uğraş, yerel bir şey) uydurma:
+  `note` alanında Türkçe olarak "bu konuda sana özel içerik bulmam biraz
+  zaman alacak, şimdilik şunu deneyelim" de ve yakın bir alan öner.
+
 > Uygulama senkron yapılmamış günlerde bunu kendisi yapıyor
 > (`src/core/prompts.ts`: konu × seviye çerçevesi). Senin görevin ondan
 > **daha iyisini** yazmak — çünkü sen kullanıcının dünkü hatalarını ve
@@ -825,6 +847,34 @@ yürütüyor. Bu şu demek:
 Kullanıcı o gün içeriği izlememişse (`contentPending` doluysa) yine de sohbet
 yaz — ama konuyu **önceki** içerikten ya da günün temasından seç. Sohbetsiz gün
 olmasın; kullanıcı bunu her gün istedi.
+
+### `conversationAlternatives` — **2 yedek sohbet yaz**
+
+Kullanıcının isteği: *"her tıklayana o bölümle alakalı farklı bir diyalog
+gelmesi… hep sınırlı rol dönmesini istemiyorum."*
+
+Ekranda "🔄 Başka bir sohbet ver" düğmesi var. Her basıldığında seni yeniden
+çalıştırmak 1-2 dakika bekletirdi; onun yerine **aynı pakette 2 alternatif**
+yazıyorsun ve geçiş anında oluyor.
+
+```json
+"conversation":  { … asıl sohbet … },
+"conversationAlternatives": [ { … }, { … } ]
+```
+
+Kurallar:
+
+- **Aynı içerik, başka açı.** Üçü de aynı bölüm/şarkı üstüne ama farklı
+  yerinden tutsun: biri olay örgüsü, biri karakter/duygu, biri kendi
+  hayatıyla bağ. Aynı soruların sırasını değiştirmek "farklı sohbet" değildir.
+- **Üçü de tam sohbet** — aynı tur sayısı, aynı seviye, aynı `targetWords`.
+  Yedek diye kısa yazma; kullanıcı hangisini görürse görsün aynı dersi almalı.
+- `date` üçünde de aynı gün olmalı, yoksa uygulama yedeği görmez.
+- Maliyeti ~350 jeton/sohbet. Paket sıkışıyorsa **önce alternatiflerden**
+  vazgeç; asıl sohbet ve ders her zaman önceliklidir.
+- Yazmazsan sorun olmaz: uygulamanın kendi tur bankası devreye girer
+  (`localcontent.ts`, 15.625 bileşim). Ama o banka bölümü bilmez, senin
+  yazdığın bilir — yazabiliyorken yaz.
 
 ## 5.2 Dünkü sohbeti değerlendir (`conversationReviews`)
 

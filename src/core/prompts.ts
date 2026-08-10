@@ -17,6 +17,7 @@
 
 import { dayNumber } from './reading';
 import { LEVELS, levelIndex, type CEFRLevel } from './level';
+import { keysFromNote, noteSubject } from './tastematch';
 import type { Tastes } from '../db/types';
 
 type PromptSet = Record<CEFRLevel, string[]>;
@@ -309,7 +310,7 @@ const WRITE_FRAMES: Record<CEFRLevel, (subject: string) => string> = {
   C2: (s) => `Write about ${s}, and reconstruct why a reasonable person might see it differently.`,
 };
 
-/** Kullanıcının bütün zevk seçimleri tek kümede */
+/** Kullanıcının bütün zevk seçimleri tek kümede — serbest metin dahil */
 function tasteKeys(tastes: Tastes | undefined): Set<string> {
   if (!tastes) return new Set();
   return new Set([
@@ -318,6 +319,7 @@ function tasteKeys(tastes: Tastes | undefined): Set<string> {
     ...tastes.screen,
     ...tastes.sports,
     ...tastes.other,
+    ...keysFromNote(tastes.note),
   ]);
 }
 
@@ -342,7 +344,22 @@ function tasteBased(
   salt: number
 ): string | null {
   const topics = topicsFor(tastes);
-  if (topics.length === 0) return null;
+
+  /**
+   * Hiçbir konu bloğu tutmadı ama kullanıcı serbest metne bir şey yazmış.
+   *
+   * Eskiden bu durumda genel havuza düşülüyordu: "tiyatro" yazan biri
+   * tiyatroyla ilgisi olmayan bir görev alıyordu. Şimdi kendi kelimesi
+   * göreve gömülüyor — *"Talk about tiyatro. Use short, simple sentences."*
+   * Uydurma eşleşmeden dürüst, genel sorudan isabetli. Öğretmen çalıştığında
+   * bunun yerine gerçek bir tiyatro içeriği ve sohbeti geliyor.
+   */
+  if (topics.length === 0) {
+    const own = noteSubject(tastes?.note);
+    if (!own) return null;
+    const specOwn = LEVELS[Math.max(0, Math.min(LEVELS.length - 1, levelIndex(level)))];
+    return frames[specOwn](own);
+  }
 
   const day = dayNumber(today) + salt;
   /**
@@ -376,7 +393,8 @@ export function taskTopicLabel(
   salt = 0
 ): string | null {
   const topics = topicsFor(tastes);
-  if (topics.length === 0) return null;
+  /** Serbest metinden gelen görevin etiketi kullanıcının kendi kelimesi olur */
+  if (topics.length === 0) return noteSubject(tastes?.note);
   return topics[(dayNumber(today) + salt) % topics.length].labelTR;
 }
 

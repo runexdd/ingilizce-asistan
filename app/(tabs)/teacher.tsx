@@ -26,7 +26,7 @@ import {
   targetTrend,
 } from '../../src/core/progress';
 import { toISODate } from '../../src/core/srs';
-import { markContentDone } from '../../src/db/mutations';
+import { markContentDone, nextConversationVariant } from '../../src/db/mutations';
 import {
   getActiveContent,
   getActiveConversation,
@@ -298,6 +298,26 @@ export default function TeacherScreen() {
                 : '💬  Sohbete başla'}
             </Text>
           </Pressable>
+
+          {/**
+            * "Başka bir sohbet ver" — kullanıcının isteği: *"hep sınırlı rol
+            * dönmesini istemiyorum."*
+            *
+            * ⚠️ Yalnızca sohbet **başlamadan** görünüyor. Kayıt açılırken
+            * planın ilk repliği mesajlara yazılıyor ve turlar kayıttaki
+            * sayaçla yürüyor; senaryoyu ortadan değiştirmek ekrandaki
+            * konuşmayla planı birbirinden ayırırdı.
+            */}
+          {!todayConversation ? (
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => update((d) => nextConversationVariant(d))}
+            >
+              <Text style={styles.secondaryButtonText}>
+                🔄  Başka bir sohbet ver
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 

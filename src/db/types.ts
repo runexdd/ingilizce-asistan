@@ -552,6 +552,22 @@ export interface AppData {
   contentDone: Array<{ type: string; title: string; date: string }>;
   /** Öğretmenin bugün için yazdığı sohbet senaryosu */
   conversationPlan?: ConversationPlan;
+  /**
+   * Öğretmenin **yedek** sohbetleri — aynı gün için yazdığı alternatifler.
+   *
+   * Kullanıcının isteği: *"her tıklayana o bölümle alakalı farklı bir diyalog
+   * gelsin, hep sınırlı rol dönmesini istemiyorum."* Her tıklamada öğretmeni
+   * yeniden çalıştırmak 1-2 dakika bekletirdi; onun yerine öğretmen günlük
+   * pakete 2-3 sohbet koyuyor (fazladan ~700 jeton) ve tıklama anında
+   * geçiş yapıyor. Bunlar da bitince uygulamanın kendi tur bankası devreye
+   * giriyor (`buildLocalConversation`, 15.625 bileşim, sıfır jeton).
+   */
+  conversationAlternatives?: ConversationPlan[];
+  /**
+   * Bugün kaçıncı sohbet isteniyor. "Başka bir sohbet ver" her basıldığında
+   * artıyor; tarih değişince sıfırlanıyor.
+   */
+  conversationVariant?: { date: string; index: number };
   /** Yapılmış sohbetlerin kaydı — öğretmene giden ham veri */
   conversations: ConversationRecord[];
   /** Hedef tarihinin gün gün geçmişi — "dün 80'di, bugün 78" grafiği */

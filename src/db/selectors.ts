@@ -358,14 +358,35 @@ export function getActiveConversation(
 ): ActiveConversation {
   const iso = toISODate(today);
   const stale = isContentStale(data);
+  /** Bugün kaçıncı sohbet isteniyor — dünün sayacı bugüne taşınmaz */
+  const variant =
+    data.conversationVariant?.date === iso ? data.conversationVariant.index : 0;
 
   if (!stale && data.conversationPlan?.date === iso) {
-    return { plan: data.conversationPlan, source: 'teacher' };
+    /**
+     * Öğretmenin bugün için yazdıkları: asıl plan + yedekleri. Kullanıcı
+     * "başka bir sohbet" dedikçe sırayla bunlara geçiliyor; hepsi bitince
+     * uygulamanın tur bankasına düşülüyor — öğretmeni yeniden çalıştırıp
+     * 1-2 dakika beklemektense anında bir sohbet vermek daha iyi.
+     */
+    const teacherPlans = [
+      data.conversationPlan,
+      ...(data.conversationAlternatives ?? []).filter((p) => p.date === iso),
+    ];
+    if (variant < teacherPlans.length) {
+      return { plan: teacherPlans[variant], source: 'teacher' };
+    }
   }
 
   const content = getActiveContent(data, today).items[0];
   return {
-    plan: buildLocalConversation(content, data.profile.level, data.plan?.sizing, iso),
+    plan: buildLocalConversation(
+      content,
+      data.profile.level,
+      data.plan?.sizing,
+      iso,
+      variant
+    ),
     source: 'app',
   };
 }

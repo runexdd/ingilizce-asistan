@@ -207,6 +207,15 @@ export interface InboxPayload {
    */
   conversation?: ConversationPlan;
   /**
+   * Aynı gün için yazılmış **yedek sohbetler** (en fazla 2-3).
+   *
+   * Kullanıcı "başka bir sohbet ver" dediğinde öğretmeni yeniden çalıştırmak
+   * 1-2 dakika bekletir; onun yerine öğretmen paketi hazırlarken birkaç
+   * alternatif yazıyor ve geçiş anında oluyor. Maliyeti sohbet başına
+   * ~350 jeton. Kural `ogretmen.md` §5.1'de.
+   */
+  conversationAlternatives?: ConversationPlan[];
+  /**
    * Kullanıcının sorduğu serbest sorulara cevaplar.
    * `id` outbox'taki `questions[].id` ile birebir aynı olmalı.
    */

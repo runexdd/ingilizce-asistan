@@ -32,6 +32,7 @@ import { LEVELS, specOf, toLevel, type LevelSizing } from './level';
 import type { ContentSuggestion, ConversationPlan, Tastes } from '../db/types';
 import type { CatalogItem } from './catalog/types';
 import { A1_CATALOG } from './catalog/a1';
+import { keysFromNote } from './tastematch';
 
 /**
  * Ortak katalog — birden çok seviyeye açık, seviyeye özel olmayan içerikler.
@@ -399,7 +400,14 @@ const SHARED_CATALOG: CatalogItem[] = [
  */
 const CATALOG: CatalogItem[] = [...SHARED_CATALOG, ...A1_CATALOG];
 
-/** Tüm zevk seçimlerini tek bir anahtar kümesine indirir */
+/**
+ * Tüm zevk seçimlerini tek bir anahtar kümesine indirir.
+ *
+ * Serbest metin de burada: "Kendim yazmak istiyorum" deyip *tiyatro* yazan
+ * kullanıcı hiçbir anahtar taşımıyordu ve tarafsız yedeğe düşüyordu.
+ * `keysFromNote` yazdığını en yakın anahtarlara bağlıyor (tiyatro →
+ * dizi + dram); bağlayamazsa hiçbir şey uydurmuyor.
+ */
 function tasteKeys(tastes: Tastes | undefined): Set<string> {
   if (!tastes) return new Set();
   return new Set([
@@ -408,6 +416,7 @@ function tasteKeys(tastes: Tastes | undefined): Set<string> {
     ...tastes.screen,
     ...tastes.sports,
     ...tastes.other,
+    ...keysFromNote(tastes.note),
   ]);
 }
 
@@ -564,14 +573,46 @@ export function pickLocalContent(
    */
   const musicChosen = (tastes?.music ?? []).length > 0;
 
+  /**
+   * **Çıkarımı sakla ma.**
+   *
+   * ⚠️ Testte yakalandı: "Kendim yazmak istiyorum" kutusuna *tiyatro* yazan
+   * kullanıcıya *Inside Out* öneriliyor ve gerekçede **"Dram seçtin"**
+   * yazıyordu. Kullanıcı dram seçmedi — biz onun yazdığından çıkardık.
+   * Seçilmemiş bir zevki seçilmiş gibi göstermek, projede iki kez düzelttiğimiz
+   * "yalan gerekçe" hatasının üçüncü hâli olurdu.
+   *
+   * Doğrusu: eşleşme yalnızca serbest metinden geliyorsa gerekçe bunu açıkça
+   * söylesin. Kullanıcı hem öneriyi hem de nereden çıktığını görür; yanlışsa
+   * yazdığını değiştirebilir.
+   */
+  const dogrudan = new Set([
+    ...(tastes?.areas ?? []),
+    ...(tastes?.music ?? []),
+    ...(tastes?.screen ?? []),
+    ...(tastes?.sports ?? []),
+    ...(tastes?.other ?? []),
+  ]);
+  const metinden = new Set(keysFromNote(tastes?.note));
+  const yazdigi = tastes?.note?.trim();
+
+  const gerekce = (item: CatalogItem): string => {
+    if (item.tastes.length === 0 && item.type === 'song' && !musicChosen) {
+      return 'Müzik türü seçmemişsin — Ayarlar → Zevklerim\'den seçersen şarkı sana göre gelir. Bu parça yavaş ve sözleri net, güvenli bir başlangıç.';
+    }
+    const dogrudanTutan = item.tastes.some((t) => dogrudan.has(t));
+    const metindenTutan = item.tastes.some((t) => metinden.has(t));
+    if (!dogrudanTutan && metindenTutan && yazdigi) {
+      return `"${yazdigi}" yazmışsın; hazır listede tam karşılığı yok, en yakın eşleşme bu. Öğretmen çalıştığında sana daha uygun bir şey seçecek.`;
+    }
+    return item.why;
+  };
+
   return picks.map((item) => ({
     type: item.type,
     title: item.title,
     where: item.where,
-    why:
-      item.tastes.length === 0 && item.type === 'song' && !musicChosen
-        ? 'Müzik türü seçmemişsin — Ayarlar → Zevklerim\'den seçersen şarkı sana göre gelir. Bu parça yavaş ve sözleri net, güvenli bir başlangıç.'
-        : item.why,
+    why: gerekce(item),
     instruction: item.instruction,
     skill: 'listening',
     words: item.words,
@@ -596,7 +637,12 @@ export function buildLocalConversation(
   content: ContentSuggestion | undefined,
   level: string,
   sizing: LevelSizing | undefined,
-  date: string
+  date: string,
+  /**
+   * Kaçıncı sohbet — "başka bir sohbet ver" her basıldığında bir artıyor.
+   * Aynı gün aynı içerikte bile bambaşka bir tur dizisi üretiyor.
+   */
+  variant = 0
 ): ConversationPlan {
   const spec = specOf(level, sizing);
   /** Tur başına beklenen kelime — seviyenin konuşma süresinin dörtte biri */
@@ -647,61 +693,291 @@ export function buildLocalConversation(
       ? 'Kısa cümleler kur, geniş zaman yeter.'
       : 'Geçmiş zaman kullan.';
 
-  const turns: ConversationPlan['turns'] = [
-    {
-      say: `Hi! Let's talk about the ${thing} you picked: ${topic}. First, tell me what it is about.`,
-      hint: `${seyTR} neyi anlattığını 3-4 cümleyle anlat. ${zamanIpucu}`,
-      useWords: words.slice(0, 1),
-      minWords: base + 6,
-      followUp: 'That was short. Give me two more sentences — what happened next?',
-    },
-    {
-      say: `Which part did you like the most, and why?`,
-      hint: 'Beğendiğin kısmı söyle ve sebebini "because" ile bağla.',
-      minWords: base,
-      followUp: 'Tell me the reason. Start with "I liked it because…".',
-    },
-    {
-      say: `Was there anything you did not understand? Tell me about it.`,
-      hint: `${seyTR} anlamadığın bir kelimesini veya cümlesini anlat — bilmediğini anlatmak da bir beceri.`,
-      minWords: base,
-      followUp: 'Try again: was it a word, or was it too fast?',
-    },
-    {
-      say: isSong
-        ? `How does this song make you feel? Describe it in your own words.`
-        : isSeries || isFilm
-          ? `Describe one character. What kind of person are they?`
-          : `Explain the main idea to a friend who did not watch it.`,
-      hint: isSong
-        ? 'Şarkının sende bıraktığı hissi anlat, iki sıfat kullan.'
-        : isSeries || isFilm
-          ? 'Bir karakteri tarif et, iki sıfat kullan.'
-          : 'İzlemeyen birine ana fikri anlat — kendi cümlelerinle.',
-      useWords: words.slice(1, 2),
-      minWords: base,
-      followUp: 'Give me one more detail.',
-    },
-    {
-      say: `Now use these words in your own sentences: ${words.slice(0, 3).join(', ') || 'because, really, still'}.`,
-      hint: 'Bugünün kelimelerini kendi cümlende kullan — kelime ancak kullanınca oturur.',
-      useWords: words.slice(0, 3),
-      minWords: base,
-      followUp: 'One more sentence with a different word, please.',
-    },
-    {
-      say: isSong
-        ? `Would you recommend this song to a friend? Why or why not?`
-        : isSeries
-          ? `Will you watch the next episode? Why?`
-          : isFilm
-            ? `Would you recommend this film to a friend? Why or why not?`
-          : `Would you recommend it to a friend? Why or why not?`,
-      hint: 'Cevabını sebebiyle birlikte söyle; tek kelimelik cevap sayılmaz.',
-      minWords: base,
-      followUp: 'Tell me why — one sentence is enough.',
-    },
+  const kelimeler = words.slice(0, 3).join(', ') || 'because, really, still';
+
+  /**
+   * **Tur bankası.** Altı yuva, her yuvada beş farklı soru: 5⁶ = 15.625
+   * kombinasyon.
+   *
+   * Kullanıcının isteği: *"her tıklayana o bölümle alakalı farklı bir diyalog
+   * gelmesi… hep sınırlı rol dönmesini istemiyorum."* Sabit altı turdu; aynı
+   * altı soru her gün, her içerik için tekrarlanınca sohbet ezber oluyordu.
+   *
+   * Neden yerel banka, neden öğretmen değil: öğretmene her tıklamada yeni
+   * sohbet yazdırmak bir çalıştırma (~12.000 jeton) **ve 1-2 dakika bekleme**
+   * demek; "anında" hissi ölüyor ve bilgisayarın açık olmasını gerektiriyor.
+   * Banka sıfır jeton, anında ve internetsiz çalışıyor. Öğretmenin yazdığı
+   * sohbet geldiğinde yine o kazanıyor — banka yedek, karar verici öğretmen.
+   *
+   * Yuvaların işlevi sabit (anlat → yorum → zorluk → tarif → kelime → kapanış);
+   * değişen soruların **dil işi** aynı kalıyor, sadece soruluş biçimi ve
+   * açısı dönüyor. Yoksa çeşitlilik uğruna ölçüm bozulurdu.
+   */
+  const YUVALAR: ConversationPlan['turns'][] = [
+    /* 1 — anlat */
+    [
+      {
+        say: `Hi! Let's talk about the ${thing} you picked: ${topic}. First, tell me what it is about.`,
+        hint: `${seyTR} neyi anlattığını 3-4 cümleyle anlat. ${zamanIpucu}`,
+        minWords: base + 6,
+        followUp: 'That was short. Give me two more sentences — what happened next?',
+      },
+      {
+        say: `Hello! You picked ${topic}. Tell me the story in your own words.`,
+        hint: `${seyTR} konusunu kendi cümlelerinle anlat. ${zamanIpucu}`,
+        minWords: base + 6,
+        followUp: 'Keep going — two more sentences, please.',
+      },
+      {
+        say: `Hi! Imagine I know nothing about ${topic}. Explain it to me.`,
+        hint: `Hiç bilmeyen birine anlatır gibi anlat. ${zamanIpucu}`,
+        minWords: base + 6,
+        followUp: 'I still do not have the picture. Add two sentences.',
+      },
+      {
+        say: `Hey! What happens in ${topic}? Start from the beginning.`,
+        hint: `Baştan başlayarak anlat, sıra önemli. ${zamanIpucu}`,
+        minWords: base + 6,
+        followUp: 'And then? Two more sentences.',
+      },
+      {
+        say: `Hi! Give me a short summary of ${topic} — three or four sentences.`,
+        hint: `Kısa bir özet çıkar, 3-4 cümle. ${zamanIpucu}`,
+        minWords: base + 6,
+        followUp: 'A summary needs a little more. Two more sentences.',
+      },
+    ],
+    /* 2 — yorum ve sebep */
+    [
+      {
+        say: `Which part did you like the most, and why?`,
+        hint: 'Beğendiğin kısmı söyle ve sebebini "because" ile bağla.',
+        minWords: base,
+        followUp: 'Tell me the reason. Start with "I liked it because…".',
+      },
+      {
+        say: `What was the best moment for you? Say why.`,
+        hint: 'En iyi anı seç ve nedenini söyle.',
+        minWords: base,
+        followUp: 'Why was it the best? One sentence with "because".',
+      },
+      {
+        say: `Was there anything you did not like? Tell me why.`,
+        hint: 'Beğenmediğin bir şey varsa söyle, sebebiyle birlikte.',
+        minWords: base,
+        followUp: 'Give me the reason, not just the thing.',
+      },
+      {
+        say: `How would you describe it to a friend — good or boring? Why?`,
+        hint: 'Bir arkadaşına nasıl anlatırdın? Sebebini de ekle.',
+        minWords: base,
+        followUp: 'Add the reason. "I think it is … because …".',
+      },
+      {
+        say: `Give it a score out of ten, and explain your score.`,
+        hint: 'On üzerinden puan ver ve puanı açıkla.',
+        minWords: base,
+        followUp: 'The number is not enough — why that number?',
+      },
+    ],
+    /* 3 — zorluk ve anlamama */
+    [
+      {
+        say: `Was there anything you did not understand? Tell me about it.`,
+        hint: `${seyTR} anlamadığın bir kelimesini veya cümlesini anlat — bilmediğini anlatmak da bir beceri.`,
+        minWords: base,
+        followUp: 'Try again: was it a word, or was it too fast?',
+      },
+      {
+        say: `Which word was new for you? Where did you hear it?`,
+        hint: 'Yeni duyduğun bir kelimeyi ve geçtiği yeri anlat.',
+        minWords: base,
+        followUp: 'Say the sentence where you heard it.',
+      },
+      {
+        say: `Was it easy or hard to follow? Tell me what made it hard.`,
+        hint: 'Takip etmek kolay mıydı zor muydu, neden?',
+        minWords: base,
+        followUp: 'What exactly was hard — the speed, or the words?',
+      },
+      {
+        say: `Did you need subtitles? Tell me when you needed them.`,
+        hint: 'Altyazıya baktın mı, hangi anda?',
+        minWords: base,
+        followUp: 'Describe that moment in one more sentence.',
+      },
+      {
+        say: `If you watched it again, what would you understand better?`,
+        hint: 'Tekrar izlesen neyi daha iyi anlardın?',
+        minWords: base,
+        followUp: 'Say why you would understand it better.',
+      },
+    ],
+    /* 4 — tarif */
+    [
+      {
+        say: isSong
+          ? `How does this song make you feel? Describe it in your own words.`
+          : isSeries || isFilm
+            ? `Describe one character. What kind of person are they?`
+            : `Explain the main idea to a friend who did not watch it.`,
+        hint: isSong
+          ? 'Şarkının sende bıraktığı hissi anlat, iki sıfat kullan.'
+          : isSeries || isFilm
+            ? 'Bir karakteri tarif et, iki sıfat kullan.'
+            : 'İzlemeyen birine ana fikri anlat — kendi cümlelerinle.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Give me one more detail.',
+      },
+      {
+        say: isSong
+          ? `What is the song about? Say it in two or three sentences.`
+          : isSeries || isFilm
+            ? `Describe the place where it happens. What can you see?`
+            : `What is the most important thing in it? Describe it.`,
+        hint: isSong
+          ? 'Şarkı neyi anlatıyor? İki-üç cümle.'
+          : isSeries || isFilm
+            ? 'Geçtiği yeri tarif et — ne görüyorsun?'
+            : 'En önemli kısmı tarif et.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'One more sentence — add a detail.',
+      },
+      {
+        say: isSong
+          ? `Is the singer happy or sad? How can you tell?`
+          : isSeries || isFilm
+            ? `Which person would you like to meet? Say why.`
+            : `Who is speaking, and what do they want you to know?`,
+        hint: isSong
+          ? 'Şarkıcı mutlu mu üzgün mü, nereden anladın?'
+          : isSeries || isFilm
+            ? 'Hangi karakterle tanışmak isterdin, neden?'
+            : 'Kim konuşuyor ve ne anlatmak istiyor?',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Explain how you know that.',
+      },
+      {
+        say: isSong
+          ? `Describe the music itself — fast, slow, loud, quiet?`
+          : isSeries || isFilm
+            ? `Describe what one person looks like and how they act.`
+            : `Describe one thing you saw that you did not expect.`,
+        hint: isSong
+          ? 'Müziğin kendisini tarif et: hızlı mı yavaş mı?'
+          : isSeries || isFilm
+            ? 'Bir kişinin görünüşünü ve davranışını anlat.'
+            : 'Beklemediğin bir şeyi anlat.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Use one more adjective.',
+      },
+      {
+        say: isSong
+          ? `Where would you listen to this song — at home, in the car, at work?`
+          : isSeries || isFilm
+            ? `What happens at the end? Describe it.`
+            : `Describe the part you would show to a friend.`,
+        hint: isSong
+          ? 'Bu şarkıyı nerede dinlerdin, neden?'
+          : isSeries || isFilm
+            ? 'Sonunda ne oluyor, anlat.'
+            : 'Bir arkadaşına göstereceğin kısmı anlat.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+    ],
+    /* 5 — kelime kullanımı */
+    [
+      {
+        say: `Now use these words in your own sentences: ${kelimeler}.`,
+        hint: 'Bugünün kelimelerini kendi cümlende kullan — kelime ancak kullanınca oturur.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'One more sentence with a different word, please.',
+      },
+      {
+        say: `Make one sentence for each of these words: ${kelimeler}.`,
+        hint: 'Her kelime için bir cümle kur.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'You missed one — use it in a sentence.',
+      },
+      {
+        say: `Tell me about your own day using these words: ${kelimeler}.`,
+        hint: 'Bu kelimelerle kendi gününü anlat.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'Add one more sentence with another word.',
+      },
+      {
+        say: `Use these words to talk about your family or your job: ${kelimeler}.`,
+        hint: 'Bu kelimelerle kendi hayatından bir şey anlat.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'One more, with a different word.',
+      },
+      {
+        say: `Write two sentences with these words, one true and one false: ${kelimeler}.`,
+        hint: 'Bu kelimelerle biri doğru biri yanlış iki cümle kur.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'Now use the third word too.',
+      },
+    ],
+    /* 6 — kapanış */
+    [
+      {
+        say: isSong
+          ? `Would you recommend this song to a friend? Why or why not?`
+          : isSeries
+            ? `Will you watch the next episode? Why?`
+            : isFilm
+              ? `Would you recommend this film to a friend? Why or why not?`
+              : `Would you recommend it to a friend? Why or why not?`,
+        hint: 'Cevabını sebebiyle birlikte söyle; tek kelimelik cevap sayılmaz.',
+        minWords: base,
+        followUp: 'Tell me why — one sentence is enough.',
+      },
+      {
+        say: `Who would like this, and who would not? Say why.`,
+        hint: 'Kim sever kim sevmez? Sebebini söyle.',
+        minWords: base,
+        followUp: 'Give the reason for one of them.',
+      },
+      {
+        say: `What will you do next — more of this, or something different?`,
+        hint: 'Sırada ne var? Aynısından mı, başka bir şey mi?',
+        minWords: base,
+        followUp: 'Say why you chose that.',
+      },
+      {
+        say: `Did it change anything for you? Even a small thing.`,
+        hint: 'Sende bir şey değiştirdi mi, küçük bir şey bile olsa.',
+        minWords: base,
+        followUp: 'Explain that in one more sentence.',
+      },
+      {
+        say: `Tell me one thing you learned today — in English or about the topic.`,
+        hint: 'Bugün öğrendiğin bir şeyi söyle — İngilizce ya da konu hakkında.',
+        minWords: base,
+        followUp: 'Say why that one stayed with you.',
+      },
+    ],
   ];
+
+  /**
+   * Yuvalar birbirinden bağımsız dönsün diye her yuvaya farklı bir kaydırma
+   * uygulanıyor. Aynı gün + aynı içerik + aynı varyant her zaman aynı sohbeti
+   * verir (kararlılık şart: kullanıcı ekranı kapatıp açınca soru değişmemeli),
+   * `variant` artınca hepsi birden başka bir bileşime geçer.
+   */
+  const tohum = daySeed(date + (content?.title ?? ''));
+  const turns = YUVALAR.map((yuva, i) => yuva[(tohum + variant * 7 + i * 31) % yuva.length]);
 
   return {
     date,
