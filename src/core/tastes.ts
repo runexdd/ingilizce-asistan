@@ -79,9 +79,18 @@ export const TASTE_STEPS: TasteStep[] = [
   },
   {
     field: 'music',
-    requiresArea: 'muzik',
+    /**
+     * ⚠️ **Müzik herkese sorulur** — burada bir zamanlar `requiresArea: 'muzik'`
+     * vardı. Kullanıcının tespiti: *"bu sistemde müzik seçmeyen adam çöpe
+     * gidiyor, ondan zorunlu seçtirelim."*
+     *
+     * Haklı: günün dinleme içeriği bir şarkı ve tür seçilmemişse herkese aynı
+     * tarafsız parça çıkıyordu. Oysa müzik dinlemeyi "ilgi alanı" saymayan
+     * biri de bir tür tercih ediyor — sadece hobisi olarak görmüyor. İlgi
+     * alanına bağlamak, cevabı olan bir soruyu sormamak demekti.
+     */
     question: 'Hangi müziği dinlersin?',
-    why: 'Sevmediğin türden şarkı açılmaz; açılmayan şarkı hiçbir şey öğretmez.',
+    why: 'Günün dinleme çalışması bir şarkı üzerinden gidiyor. Sevmediğin türden şarkı açılmaz; açılmayan şarkı hiçbir şey öğretmez.',
     options: withCustom([
       { value: 'rock', label: '🎸  Rock' },
       { value: 'metal', label: '🤘  Metal' },

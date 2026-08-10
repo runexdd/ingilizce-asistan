@@ -47,6 +47,24 @@ interface TasteTopic {
    * "Describe ___", "Tell me about ___" cümlesine oturmalı.
    */
   subjects: string[];
+  /**
+   * A1 karşılıkları — **somut, tek adımlı, hafızadan cevaplanabilir** konular.
+   *
+   * ⚠️ Buranın olmaması ölçülmüş bir hataydı. Çerçeve seviyeye göre
+   * değişiyordu ama **konu değişmiyordu**; A1 kullanıcısına şu çıkıyordu:
+   *
+   *     "Talk about a scientific idea you find hard to believe.
+   *      Use short, simple sentences."
+   *
+   * Yani B2 konusu, üstünde A1 talimatı. Böyle bir görevin karşısında A1
+   * öğrencisi hiçbir şey yazamaz; kullanıcı bunu "bilim/tarih/ekonomi
+   * kısmında diyalog gelmiyor" diye bildirdi. Cümleyi kısaltmak konuyu
+   * kolaylaştırmıyor — konunun kendisi somutlaşmalı.
+   *
+   * Ölçüt: cevabı **isim ve geniş zaman fiille** verilebilmeli. "Sevdiğin
+   * takım hangisi" A1'dir; "insanlar sporu neden bu kadar önemsiyor" değildir.
+   */
+  simple: string[];
   /** Türkçe ipucunda geçen alan adı */
   labelTR: string;
 }
@@ -55,6 +73,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['spor', 'futbol', 'basketbol', 'tenis', 'motor', 'dovus'],
     labelTR: 'spor',
+    simple: [
+      'your favourite team',
+      'a sport you like to watch',
+      'the last match you watched',
+      'a player you like',
+    ],
     subjects: [
       'the last match you watched',
       'a player or athlete you admire',
@@ -66,6 +90,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['fitness', 'kosu', 'dogaspor'],
     labelTR: 'spor ve hareket',
+    simple: [
+      'what you do to keep fit',
+      'the days of the week you exercise',
+      'how you feel after sport',
+      'a place where you like to walk or run',
+    ],
     subjects: [
       'your training routine this week',
       'the hardest workout you have done',
@@ -76,6 +106,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['muzik', 'rock', 'metal', 'pop', 'rap', 'caz', 'klasik', 'blues', 'country', 'elektronik', 'akustik'],
     labelTR: 'müzik',
+    simple: [
+      'the music you like',
+      'a singer or band you listen to',
+      'when you listen to music',
+      'a song you know well',
+    ],
     subjects: [
       'the last song you listened to',
       'a band or artist you keep coming back to',
@@ -87,6 +123,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['dizi', 'superhero', 'scifi', 'polisiye', 'komedi', 'dram', 'animasyon', 'tarihi', 'fantastik', 'gerilim'],
     labelTR: 'dizi ve film',
+    simple: [
+      'a film or show you like',
+      'a character you like',
+      'when and where you watch films',
+      'what happens in the story',
+    ],
     subjects: [
       'the last episode you watched',
       'a character you find interesting',
@@ -98,6 +140,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['belgesel', 'bilim', 'tarih'],
     labelTR: 'belgesel ve bilim',
+    simple: [
+      'an animal you find interesting',
+      'a place in the world you want to see',
+      'something new you learned this week',
+      'the weather where you live',
+    ],
     subjects: [
       'something you learned recently that surprised you',
       'a documentary or article you would recommend',
@@ -108,6 +156,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['oyun'],
     labelTR: 'oyun',
+    simple: [
+      'a game you play',
+      'when you play games',
+      'the game you played last',
+      'who you play with',
+    ],
     subjects: [
       'the game you are playing at the moment',
       'a level or match that took you many tries',
@@ -118,6 +172,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['teknoloji'],
     labelTR: 'teknoloji',
+    simple: [
+      'the phone you use',
+      'an app you open every day',
+      'how many hours you use your phone',
+      'a thing you bought online',
+    ],
     subjects: [
       'an app you use every day',
       'a piece of technology that disappointed you',
@@ -128,6 +188,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['yemek'],
     labelTR: 'yemek',
+    simple: [
+      'the food you like',
+      'what you eat for breakfast',
+      'a meal you can cook',
+      'a food you do not like',
+    ],
     subjects: [
       'the last meal you cooked',
       'a dish from your childhood',
@@ -138,6 +204,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['seyahat', 'seyahat-ortam'],
     labelTR: 'seyahat',
+    simple: [
+      'a city you visited',
+      'the place you want to go',
+      'how you travel — by car, bus or plane',
+      'what you take with you on a trip',
+    ],
     subjects: [
       'the last place you travelled to',
       'a journey that did not go as planned',
@@ -149,6 +221,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['kitap', 'akademik'],
     labelTR: 'kitap',
+    simple: [
+      'a book you like',
+      'when you read',
+      'a story you know well',
+      'reading on paper or on a phone',
+    ],
     subjects: [
       'the last book you read',
       'a book you started and never finished',
@@ -159,6 +237,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['is', 'ofis'],
     labelTR: 'iş',
+    simple: [
+      'your job — what you do every day',
+      'the time you start and finish work',
+      'the people you work with',
+      'how you go to work',
+    ],
     subjects: [
       'the busiest day you had at work this month',
       'a meeting that could have been an email',
@@ -169,6 +253,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['otomobil'],
     labelTR: 'otomobil',
+    simple: [
+      'a car you like',
+      'the car you drive or want',
+      'how you go to work — car, bus or metro',
+      'the colour and size of your car',
+    ],
     subjects: [
       'a car you would buy if money were not a problem',
       'the longest drive you have done',
@@ -179,6 +269,12 @@ const TASTE_TOPICS: TasteTopic[] = [
   {
     keys: ['gunluk', 'sosyal'],
     labelTR: 'günlük hayat',
+    simple: [
+      'what you do in the morning',
+      'your weekend',
+      'the people in your family',
+      'the street where you live',
+    ],
     subjects: [
       'how your day usually starts',
       'a small thing that improved your week',
@@ -255,9 +351,21 @@ function tasteBased(
    * kalmasın.
    */
   const topic = topics[day % topics.length];
-  const subject = topic.subjects[Math.floor(day / topics.length) % topic.subjects.length];
-
   const spec = LEVELS[Math.max(0, Math.min(LEVELS.length - 1, levelIndex(level)))];
+
+  /**
+   * ⚠️ **Konu havuzu da seviyeye bağlı.** Eskiden sadece çerçeve seviyeye
+   * göre değişiyordu, konu hep aynı havuzdan geliyordu ve A1 kullanıcısı
+   * *"Talk about a scientific idea you find hard to believe"* gibi bir
+   * görevin karşısında donuyordu. Cümleyi kısaltmak konuyu kolaylaştırmaz.
+   *
+   * A1'de somut havuz, üstünde de A1 çerçevesi. A2 ve üstü şimdilik eski
+   * havuzda — faz kuralı: bir seviye bitmeden ötekinin malzemesine
+   * dokunulmuyor.
+   */
+  const pool = spec === 'A1' ? topic.simple : topic.subjects;
+  const subject = pool[Math.floor(day / topics.length) % pool.length];
+
   return frames[spec](subject);
 }
 
