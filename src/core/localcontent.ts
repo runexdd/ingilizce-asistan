@@ -33,6 +33,7 @@ import type { ContentSuggestion, ConversationPlan, Tastes } from '../db/types';
 import type { CatalogItem } from './catalog/types';
 import { A1_CATALOG } from './catalog/a1';
 import { A1_CESIT } from './catalog/a1-cesit';
+import { A1_MUZIK } from './catalog/a1-muzik';
 import { labelOf } from './tastes';
 import { keysFromNote } from './tastematch';
 
@@ -400,7 +401,12 @@ const SHARED_CATALOG: CatalogItem[] = [
  * Fazlar tamamlandıkça buraya `...A2_CATALOG` gibi satırlar eklenecek.
  * Sıra önemli değil — seçim `poolFor` içinde seviyeye ve zevke göre yapılıyor.
  */
-const CATALOG: CatalogItem[] = [...SHARED_CATALOG, ...A1_CATALOG, ...A1_CESIT];
+const CATALOG: CatalogItem[] = [
+  ...SHARED_CATALOG,
+  ...A1_CATALOG,
+  ...A1_CESIT,
+  ...A1_MUZIK,
+];
 
 /**
  * Tüm zevk seçimlerini tek bir anahtar kümesine indirir.
