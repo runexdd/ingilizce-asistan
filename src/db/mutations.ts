@@ -4,7 +4,7 @@ import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import { fitsLevel, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
 import { newId } from './id';
-import { countIntroducedToday, isLevelStale } from './selectors';
+import { countIntroducedToday, extraWordsToday, isLevelStale } from './selectors';
 import type {
   AppData,
   ConversationMessage,
@@ -269,7 +269,8 @@ export function seedDailyWords(
     (c) => !c.introducedAt && fitsLevel(c.word, base.profile.level)
   ).length;
 
-  const need = dailyNewWords - introducedToday - waiting;
+  const need =
+    dailyNewWords + extraWordsToday(base, today) - introducedToday - waiting;
   if (need <= 0) return base;
 
   const picks = wordsForLevel(
@@ -286,6 +287,48 @@ export function seedDailyWords(
     });
   }
   return next;
+}
+
+/**
+ * **Kelime çalışmasına devam** — kotanın üstüne yeni bir grup açar.
+ *
+ * Kullanıcının şikâyeti iki cümleydi: *"kelimeler hep aynı döngüde kalıyor,
+ * günlük değişecek şekilde mi ayarlandı? Ekstra seçenek koyabiliriz: kelime
+ * çalışmaya devam etmek istiyorum, bunun karşılığı havuzdan yeni çalışma
+ * oluşturulur."*
+ *
+ * Teşhis doğruydu. Havuz **günlük** dönüyor (tohum tarihten geliyor), ama
+ * günün kotası dolduğunda gün bitiyordu; kullanıcı aynı beş kelimeyi görmeye
+ * devam ediyordu çünkü onlardan başkası gelmiyordu. Sorun tekrar değil, **kapı
+ * kapalıydı.**
+ *
+ * Kotayı kaldırmak yanlış olurdu: günlük ölçü öğrenme temposunun kendisi ve
+ * SM-2 tekrar takvimi ona göre kuruluyor. Onun yerine kota **istek üzerine**
+ * genişliyor. İki şey birden yapılır, yoksa yeni kartlar eklenir ama kuyruk
+ * onları göstermez:
+ *   1. `extraWords` payı büyür (kuyruğun kotası),
+ *   2. havuzdan o kadar yeni kart tohumlanır.
+ *
+ * Tekrar için gelen eski kartlar bu paya dahil değil — pay yalnızca **yeni**
+ * kelime içindir.
+ */
+export function extendWordStudy(
+  data: AppData,
+  dailyNewWords: number,
+  today: Date = new Date()
+): AppData {
+  const iso = toISODate(today);
+  const mevcut = extraWordsToday(data, today);
+
+  /** Grup büyüklüğü günlük kotayla aynı — tempo bozulmasın, ikiye katlansın */
+  const grup = Math.max(1, dailyNewWords);
+
+  const genis: AppData = {
+    ...data,
+    extraWords: { date: iso, count: mevcut + grup },
+  };
+
+  return seedDailyWords(genis, dailyNewWords, today);
 }
 
 /**

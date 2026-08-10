@@ -32,6 +32,7 @@ import {
 import { describeInterval } from '../../src/core/srs';
 import {
   answerCard,
+  extendWordStudy,
   markCardTaught,
   stepCardBack,
   recordSession,
@@ -119,6 +120,24 @@ export default function CardsScreen() {
     update((d) => seedDailyWords(d, dailyNewWords));
   }, [data.profile.level, data.profile.levelChangedAt, dailyNewWords, update]);
 
+  /**
+   * **"Devam etmek istiyorum" kapısı.**
+   *
+   * Şikâyet: *"kelimeler hep aynı döngüde kalıyor... ekstra seçenek
+   * koyabiliriz, kelime çalışmaya devam etmek istiyorum, bunun karşılığı
+   * havuzdan yeni çalışma oluşturulur."*
+   *
+   * Günlük kota kaldırılmadı — tempo ve tekrar takvimi ona bağlı. Ama kota
+   * dolduğunda gün bitmiyor artık: isteyen havuzdan yeni bir grup açıyor.
+   * Hafta içi 6 dakikası olan da hafta sonu 25 dakikası olan da aynı ekranı
+   * kullanabilsin diye.
+   */
+  const devamEt = () => {
+    update((d) => extendWordStudy(d, dailyNewWords));
+    setCursor(0);
+    setLastResult(`Havuzdan ${dailyNewWords} yeni kelime eklendi`);
+  };
+
   if (!card) {
     return (
       <View style={[styles.screen, styles.centered]}>
@@ -130,6 +149,12 @@ export default function CardsScreen() {
           {reviewedCount > 0
             ? `${reviewedCount} kart çalışıldı. Kalanlar unutma eğrisine göre ileri tarihlere dağıtıldı.`
             : 'Günün kelimeleri senkronla geldiğinde burada belirecek.'}
+        </Text>
+        <Pressable style={styles.continueButton} onPress={devamEt}>
+          <Text style={styles.continueButtonText}>➕  Kelime çalışmaya devam et</Text>
+        </Pressable>
+        <Text style={styles.continueHint}>
+          {data.profile.level} havuzundan {dailyNewWords} yeni kelime daha gelir.
         </Text>
         {lastResult && <Text style={styles.lastResult}>{lastResult}</Text>}
       </View>
@@ -214,6 +239,15 @@ export default function CardsScreen() {
               <Text style={styles.navButtonText}>←  Tanımaya dön</Text>
             </Pressable>
           )}
+          {/**
+            * Burada da duruyor, sadece "bugünlük bitti" ekranında değil:
+            * tekrarı gelen eski kartlar varken kuyruk hiç boşalmıyor ve o
+            * ekran görünmüyor. Yeni kelime isteyen kişinin önce bütün
+            * tekrarları bitirmesi gerekmemeli.
+            */}
+          <Pressable style={styles.navButton} onPress={devamEt}>
+            <Text style={styles.navButtonText}>➕  Yeni kelime ekle</Text>
+          </Pressable>
         </View>
 
         {lastResult && <Text style={styles.lastResult}>{lastResult}</Text>}
@@ -961,5 +995,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     textAlign: 'center',
     lineHeight: 21,
+  },
+  continueButton: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  continueButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  continueHint: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
 });

@@ -49,6 +49,18 @@ export function getDueCards(
  *    fazlası bugün gösterilmez, yarına kalır. Eski kartların tekrarı bu
  *    sınıra dahil değildir — onlar zaten öğrenilmeye başlanmış kelimeler.
  */
+/**
+ * Bugün kotanın üstüne açılmış fazladan pay.
+ *
+ * "Kelime çalışmaya devam et" her basıldığında büyür, ertesi gün kendiliğinden
+ * sıfırlanır (tarih tutmuyorsa pay yok). Kuyruk ve tohumlayıcı **aynı** sayıyı
+ * okumalı; ayrı sayarlarsa kart eklenir ama kuyrukta görünmez.
+ */
+export function extraWordsToday(data: AppData, today: Date = new Date()): number {
+  const iso = toISODate(today);
+  return data.extraWords?.date === iso ? Math.max(0, data.extraWords.count) : 0;
+}
+
 export function getStudyQueue(
   data: AppData,
   dailyNewWords: number,
@@ -107,7 +119,10 @@ export function getStudyQueue(
    * yenisi çekilmemeli: günün bütçesi doldu demektir. Aksi hâlde beş kelime
    * bitirilir bitirilmez yeni beş kelime geliyordu.
    */
-  const quota = Math.max(0, dailyNewWords - countIntroducedToday(data, today));
+  const quota = Math.max(
+    0,
+    dailyNewWords + extraWordsToday(data, today) - countIntroducedToday(data, today)
+  );
 
   /**
    * Kotaya girecek yeni kartlar seçilirken **seviye yakınlığı** de sayılır.

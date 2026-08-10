@@ -582,6 +582,18 @@ export interface AppData {
    * artıyor; tarih değişince sıfırlanıyor.
    */
   conversationVariant?: { date: string; index: number };
+  /**
+   * Bugün günlük kotanın **üstüne** istenen fazladan kelime sayısı.
+   *
+   * Kullanıcının isteği: *"kelime çalışmaya devam etmek istiyorum, bunun
+   * karşılığı havuzdan yeni çalışma oluşturulur."* Günlük kota bitince kelime
+   * tarafı ertesi güne kadar duruyordu — hafta sonu bol vakti olan biri için
+   * bu bir duvar. Kota kaldırılmadı (günlük ölçü öğrenme temposunun kendisi),
+   * yanına **istek üzerine açılan** bir pay kondu.
+   *
+   * Tarih değişince kendiliğinden sıfırlanır: `date` bugün değilse pay yoktur.
+   */
+  extraWords?: { date: string; count: number };
   /** Yapılmış sohbetlerin kaydı — öğretmene giden ham veri */
   conversations: ConversationRecord[];
   /** Hedef tarihinin gün gün geçmişi — "dün 80'di, bugün 78" grafiği */
