@@ -47,7 +47,13 @@ export const A1_CATALOG: CatalogItem[] = [
     title: 'Extra English · 1. bölüm',
     where: 'YouTube — "Extra English episode 1" ara',
     levels: ['A1'],
-    tastes: ['dizi', 'komedi', 'gunluk'],
+    /**
+     * ⚠️ `gunluk` bilerek yok. Kullanım ortamı olarak "günlük hayat" seçen
+     * herkes bu diziyi alıyordu — 0.5'lik ortam bonusu, seçilmiş bütün dizi
+     * türlerinin önüne geçiyordu. Günlük konuşma ortamını Easy English
+     * karşılıyor; burası "dizi izlemek istiyorum" diyene ait.
+     */
+    tastes: ['dizi', 'komedi'],
     why: 'Dizi izlemeyi seviyorsun ama A1\'de gerçek dizinin hızı erken. Bu, İngilizce öğrenenler için çekilmiş bir komedi dizisi: oyuncular yavaş konuşuyor, espriler görsel.',
     instruction: 'Bir bölüm 25 dakika. Önce altyazısız izle, sonra İngilizce altyazıyla tekrar et. Anlamadığın 3 kelimeyi not al.',
     words: [
@@ -242,7 +248,13 @@ export const A1_CATALOG: CatalogItem[] = [
     title: 'BBC Earth · kısa hayvan klipleri',
     where: 'YouTube — "BBC Earth short clip" ara',
     levels: ['A1'],
-    tastes: ['belgesel', 'bilim', 'tarih'],
+    /**
+     * `dizi` de var: "Belgesel" seçeneği "Dizi ve film" alanının altında,
+     * yani belgesel seçen kullanıcı o alanı da işaretlemiş oluyor. Etiket
+     * olmayınca alan puanını alamıyor ve alternatifine hep yeniliyordu —
+     * belgesel seçen her seferinde aynı videoyu görüyordu.
+     */
+    tastes: ['belgesel', 'bilim', 'tarih', 'dizi'],
     why: 'Belgesel seçtin. Anlatım yavaş ve net, üstelik ne anlatıldığı ekranda görünüyor — A1\'de dinleme çalışması için en güvenli tür.',
     instruction: '5 dakikalık bir klip seç. Önce altyazısız izle, sonra altyazıyla. Kaç kelime yakaladığını karşılaştır.',
     words: [

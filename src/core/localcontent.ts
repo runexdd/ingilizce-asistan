@@ -32,6 +32,8 @@ import { LEVELS, specOf, toLevel, type LevelSizing } from './level';
 import type { ContentSuggestion, ConversationPlan, Tastes } from '../db/types';
 import type { CatalogItem } from './catalog/types';
 import { A1_CATALOG } from './catalog/a1';
+import { A1_CESIT } from './catalog/a1-cesit';
+import { labelOf } from './tastes';
 import { keysFromNote } from './tastematch';
 
 /**
@@ -398,7 +400,7 @@ const SHARED_CATALOG: CatalogItem[] = [
  * Fazlar tamamlandıkça buraya `...A2_CATALOG` gibi satırlar eklenecek.
  * Sıra önemli değil — seçim `poolFor` içinde seviyeye ve zevke göre yapılıyor.
  */
-const CATALOG: CatalogItem[] = [...SHARED_CATALOG, ...A1_CATALOG];
+const CATALOG: CatalogItem[] = [...SHARED_CATALOG, ...A1_CATALOG, ...A1_CESIT];
 
 /**
  * Tüm zevk seçimlerini tek bir anahtar kümesine indirir.
@@ -418,12 +420,22 @@ function tasteKeys(tastes: Tastes | undefined): Map<string, number> {
   };
 
   /**
-   * **Asıl ilgi alanları.** Konuyu bunlar belirler.
+   * **İlgi alanı** — konuyu belirleyen ana seçim.
    */
   ekle(tastes.areas, 1);
-  ekle(tastes.music, 1);
-  ekle(tastes.screen, 1);
-  ekle(tastes.sports, 1);
+
+  /**
+   * **Alt seçimler biraz daha ağır (1.2).**
+   *
+   * "Spor" demek geniş bir tercih; "Tenis" demek dar ve bilinçli bir tercih.
+   * İkisi eşit sayılınca ölçümde şu çıktı: "Dizi ve film" + "Belgesel" seçen
+   * kullanıcıya belgesel değil, `dizi` etiketli genel bir yapım geliyordu —
+   * çünkü ana alan da bir puan ekliyordu ve toplamı büyütüyordu. Alt seçim
+   * her zaman ana alandan daha çok şey söyler; ağırlığı da öyle olmalı.
+   */
+  ekle(tastes.music, 1.2);
+  ekle(tastes.screen, 1.2);
+  ekle(tastes.sports, 1.2);
 
   /**
    * **Kullanım ortamı — yarım ağırlık.**
@@ -515,18 +527,28 @@ function pickBest(
   if (pool.length === 0) return null;
 
   /**
-   * Önce ağırlık toplamı, **eşitlikte dar etiketli** içerik.
+   * Önce ağırlık toplamı; eşitlikte **çok geniş** etiketliyi ele.
    *
-   * İkinci ölçüt şart: "sözlü şarkı videosu" ile "Justice League Action"
-   * metal + süper kahraman seçende eşit puan alabiliyor; o durumda 2
-   * etiketli olan 11 etiketliyi yenmeli, yoksa her şeye biraz değen içerik
-   * öne çıkıyor.
+   * ⚠️ Buradaki tolerans şart. Önce "eşitlikte en dar etiketli kazansın"
+   * yazılmıştı ve ölçümde iki yan etki çıktı:
+   *
+   *   1. Çok etiketli iyi içerik **tamamen** eleniyordu: bilim seçen
+   *      kullanıcı SciModern ['akademik','bilim'] ve BBC Earth
+   *      ['belgesel','bilim','tarih'] öğelerini bir daha hiç göremiyordu,
+   *      çünkü tek etiketli bir alternatif hep önlerine geçiyordu.
+   *   2. Kazanan küme tek öğeye indiği için **çeşitlilik ölüyordu** —
+   *      tohum ne olursa olsun aynı şey çıkıyordu. Kullanıcının şikâyeti
+   *      tam olarak buydu: *"çıktım girdim, yine aynısı."*
+   *
+   * Amaç 11 etiketli "her şeye biraz değen" içeriği elemek; 1 ile 3 etiketli
+   * içerikleri birbirine rakip tutmak. Bu yüzden en dar olana **+2 tolerans**
+   * veriliyor: geniş toplayıcılar eleniyor, gerçek adaylar havuzda kalıyor.
    */
   const en = Math.max(...pool.map((i) => tasteScore(i, keys)));
   if (en > 0) {
     const esitler = pool.filter((i) => tasteScore(i, keys) === en);
     const enDar = Math.min(...esitler.map((i) => i.tastes.length));
-    const winners = esitler.filter((i) => i.tastes.length === enDar);
+    const winners = esitler.filter((i) => i.tastes.length <= enDar + 2);
     return winners[seed % winners.length];
   }
 
@@ -600,7 +622,23 @@ export function pickLocalContent(
   doneTitles: string[] = []
 ): ContentSuggestion[] {
   const keys = tasteKeys(tastes);
-  const seed = daySeed(date);
+  /**
+   * Tohuma **zevklerin kaydedilme anı** da giriyor.
+   *
+   * ⚠️ Kullanıcının bildirimi: *"bilimi seçtim SciShow verdi; çıktım girdim
+   * yeniden bilim seçtim, yine aynısı."* Tohum yalnızca tarihe baktığı için
+   * aynı gün içinde seçim ne olursa olsun aynı öğe kazanıyordu — havuz
+   * büyütülse bile aynı şey olurdu.
+   *
+   * `updatedAt` zevkler her kaydedildiğinde değişiyor; yani kullanıcı
+   * Zevklerim'e girip çıktığında havuzdan başka bir öğe geliyor. Sadece
+   * gezinmek yetmiyor, **kaydetmek** gerekiyor — bu da doğrusu: ekranı
+   * açıp kapatmak bir tercih değildir.
+   *
+   * Gün içinde hiçbir şey değişmezse seçim sabit kalıyor; "bitirdim"
+   * işaretlemesinin ve günün temasının bozulmaması için bu şart.
+   */
+  const seed = daySeed(date + (tastes?.updatedAt ?? ''));
   const done = new Set(doneTitles);
 
   const picks = [
@@ -651,6 +689,27 @@ export function pickLocalContent(
     if (!dogrudanTutan && metindenTutan && yazdigi) {
       return `"${yazdigi}" yazmışsın; hazır listede tam karşılığı yok, en yakın eşleşme bu. Öğretmen çalıştığında sana daha uygun bir şey seçecek.`;
     }
+
+    /**
+     * **Gerekçe, seçilmemiş bir alt türü iddia etmesin.**
+     *
+     * ⚠️ Ölçümde çıktı: yalnızca "Dizi ve film" alanını seçen kullanıcıya
+     * Goosebumps öneriliyor ve gerekçede *"Gerilim seçtin"* yazıyordu.
+     * Kullanıcı gerilim seçmemişti — eşleşme `dizi` alan etiketinden
+     * gelmişti. Bu, projede üç kez düzelttiğimiz "yalan gerekçe" hatasının
+     * dördüncü hâli; her seferinde başka bir kapıdan giriyor.
+     *
+     * Kural: katalogda **`tastes[0]` gerekçenin yazıldığı anahtardır.**
+     * O anahtar kullanıcının kendi seçimlerinde yoksa metin dürüst bir
+     * genel gerekçeyle değiştirilir; öneri kalır, iddia kalkar.
+     */
+    const iddia = item.tastes[0];
+    if (iddia && !dogrudan.has(iddia) && dogrudanTutan) {
+      const tutan = item.tastes.find((t) => dogrudan.has(t));
+      const alan = tutan ? labelOf(tutan) : 'seçtiğin alan';
+      return `${alan} seçtin. Alt türünü de seçersen öneri sana daha çok yaklaşır; şimdilik bu alanda A1'de takip edebileceğin yapımlardan birini verdim.`;
+    }
+
     return item.why;
   };
 
