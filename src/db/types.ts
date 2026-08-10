@@ -352,6 +352,14 @@ export interface ContentSuggestion {
   words?: Array<{ word: string; meaning: string }>;
   /** İzlerken/dinlerken dikkat edilecek şeyler (Türkçe, 2-3 madde) */
   watchFor?: string[];
+  /**
+   * Sohbette bu içeriğe ne diye hitap edilecek.
+   *
+   * `type` yetmiyor: bir animasyon filmi de dizi bölümü de `series` olarak
+   * işaretleniyor ama sohbet birine "this episode", ötekine "this film"
+   * demeli. Boşsa `type`'tan tahmin ediliyor (eski davranış).
+   */
+  noun?: 'episode' | 'song' | 'video' | 'film';
 }
 
 /* -------------------------------------------------- günün sohbeti */

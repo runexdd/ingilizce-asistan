@@ -28,37 +28,25 @@
  * Saf TypeScript — ağ yok, React yok, node ile sınanabilir.
  */
 
-import { LEVELS, specOf, toLevel, type CEFRLevel, type LevelSizing } from './level';
+import { LEVELS, specOf, toLevel, type LevelSizing } from './level';
 import type { ContentSuggestion, ConversationPlan, Tastes } from '../db/types';
-
-interface CatalogItem {
-  id: string;
-  type: ContentSuggestion['type'];
-  title: string;
-  where: string;
-  /** Uygun olduğu seviyeler */
-  levels: CEFRLevel[];
-  /** Hangi zevk anahtarlarına hitap ediyor (`src/core/tastes.ts`) */
-  tastes: string[];
-  /** Tek cümlelik Türkçe gerekçe — "niye sana verildi" */
-  why: string;
-  instruction: string;
-  /** İçeriğe girmeden önce bilinmesi iyi olan kelimeler */
-  words: Array<{ word: string; meaning: string }>;
-  watchFor: string[];
-  /** Sohbette konuşulacak şeyin adı — "bölüm" / "şarkı" */
-  noun: 'episode' | 'song' | 'video';
-}
+import type { CatalogItem } from './catalog/types';
+import { A1_CATALOG } from './catalog/a1';
 
 /**
- * Katalog.
+ * Ortak katalog — birden çok seviyeye açık, seviyeye özel olmayan içerikler.
  *
  * ⚠️ **Bağlantı ve video kimliği yok, bilerek.** Projenin kuralı: emin
  * olmadığın bağlantıyı uydurma. Burada yalnızca herkesin bulabileceği,
  * yaygın olarak bilinen yapımlar var; kullanıcı kendi servisinde arayıp
  * buluyor. Ölçüt: kullanıcı içeriğin **yarısından fazlasını** anlayabilmeli.
+ *
+ * Seviyeye özel malzeme artık `catalog/<seviye>.ts` içinde. Sebebi:
+ * katalog yatay büyütülünce her seviyede zevklerin çoğu boşta kalıyordu
+ * (ölçüm için `catalog/types.ts` başlığına bak). Faz bitince o dosya
+ * donuyor, bir daha açılmıyor — hem düzen hem token tasarrufu.
  */
-const CATALOG: CatalogItem[] = [
+const SHARED_CATALOG: CatalogItem[] = [
   /* ------------------------------------------------ süper kahraman / bilim kurgu */
   {
     id: 'flash-s1e1',
@@ -403,6 +391,14 @@ const CATALOG: CatalogItem[] = [
   },
 ];
 
+/**
+ * Kullanılan katalog: ortak + seviye fazlarının getirdikleri.
+ *
+ * Fazlar tamamlandıkça buraya `...A2_CATALOG` gibi satırlar eklenecek.
+ * Sıra önemli değil — seçim `poolFor` içinde seviyeye ve zevke göre yapılıyor.
+ */
+const CATALOG: CatalogItem[] = [...SHARED_CATALOG, ...A1_CATALOG];
+
 /** Tüm zevk seçimlerini tek bir anahtar kümesine indirir */
 function tasteKeys(tastes: Tastes | undefined): Set<string> {
   if (!tastes) return new Set();
@@ -428,6 +424,24 @@ function tasteScore(item: CatalogItem, keys: Set<string>): number {
 }
 
 /**
+ * **İsabet oranı** — eşleşme sayısı değil, eşleşmenin ne kadar yerinde olduğu.
+ *
+ * ⚠️ Bu ölçü olmadan **geniş etiketli içerik her şeyi eziyor.** Ölçülen örnek:
+ * "sözlü şarkı videosu" 11 zevk anahtarı taşıyordu; metal + süper kahraman
+ * seçen kullanıcıda 2 puan alıp, süper kahraman çizgi dizisinin 1 puanını
+ * geçiyordu. Sonuç: süper kahraman seçen adam süper kahraman göremiyordu.
+ * Aynı hatayı daha önce sıralama tarafında yakalamıştık; etiket sayısı
+ * tarafında geri geldi.
+ *
+ * Oran = eşleşen / öğenin toplam etiketi. Dar ve tam isabet eden içerik,
+ * her şeye biraz değen içeriği yener.
+ */
+function tasteRatio(item: CatalogItem, keys: Set<string>): number {
+  if (item.tastes.length === 0) return 0;
+  return tasteScore(item, keys) / item.tastes.length;
+}
+
+/**
  * Havuzdan **en iyi eşleşenler** arasından günün seçimini yapar.
  *
  * ⚠️ Burada bir kez hata yapıldı ve testte yakalandı: liste zevke göre
@@ -447,9 +461,17 @@ function pickBest(
 ): CatalogItem | null {
   if (pool.length === 0) return null;
 
-  const best = Math.max(...pool.map((i) => tasteScore(i, keys)));
-  if (best > 0) {
-    const winners = pool.filter((i) => tasteScore(i, keys) === best);
+  /**
+   * Önce isabet oranı, eşitlikte eşleşme sayısı. Sıra önemli: yalnızca
+   * sayıya bakmak geniş etiketli içeriği kazandırıyor, yalnızca orana
+   * bakmak da iki etiketten ikisini de tutturan içeriği tek etiketliyle
+   * eşitliyor. İkisi birlikte doğru sonucu veriyor.
+   */
+  const bestRatio = Math.max(...pool.map((i) => tasteRatio(i, keys)));
+  if (bestRatio > 0) {
+    const byRatio = pool.filter((i) => tasteRatio(i, keys) === bestRatio);
+    const bestCount = Math.max(...byRatio.map((i) => tasteScore(i, keys)));
+    const winners = byRatio.filter((i) => tasteScore(i, keys) === bestCount);
     return winners[seed % winners.length];
   }
 
@@ -531,15 +553,30 @@ export function pickLocalContent(
     pickBest(poolFor(level, 'song', done), keys, seed),
   ].filter((i): i is CatalogItem => i !== null);
 
+  /**
+   * Tarafsız yedeğin gerekçesini duruma göre düzelt.
+   *
+   * ⚠️ Tarafsız şarkının metni "Zevklerine tam uyan bir parça bulamadım"
+   * diyor. Bu, müzik türü seçmiş ama karşılığı bulunamamış biri için doğru;
+   * **futbol seçip müzik türü seçmemiş** biri için yanlış — sistemin
+   * beceriksiz olduğunu ima ediyor, oysa kullanıcı hiç müzik tercihi
+   * bildirmemiş. Yalan gerekçe hatasının şarkı tarafındaki hâli.
+   */
+  const musicChosen = (tastes?.music ?? []).length > 0;
+
   return picks.map((item) => ({
     type: item.type,
     title: item.title,
     where: item.where,
-    why: item.why,
+    why:
+      item.tastes.length === 0 && item.type === 'song' && !musicChosen
+        ? 'Müzik türü seçmemişsin — Ayarlar → Zevklerim\'den seçersen şarkı sana göre gelir. Bu parça yavaş ve sözleri net, güvenli bir başlangıç.'
+        : item.why,
     instruction: item.instruction,
     skill: 'listening',
     words: item.words,
     watchFor: item.watchFor,
+    noun: item.noun,
   }));
 }
 
@@ -565,25 +602,55 @@ export function buildLocalConversation(
   /** Tur başına beklenen kelime — seviyenin konuşma süresinin dörtte biri */
   const base = Math.max(6, Math.round(spec.speakingSeconds / 4));
   const words = (content?.words ?? []).map((w) => w.word);
-  const isSong = content?.type === 'song';
-  const isSeries = content?.type === 'series';
   /**
    * İçeriğe doğru isimle hitap et. "Bu bölümde ne oldu" diye sorulan şey bir
    * podcast'se cümle saçmalıyor; testte tam olarak bu çıktı.
+   *
+   * ⚠️ Tür tek başına yetmiyor. Bir animasyon filmi de bir dizi bölümü de
+   * `series` olarak işaretleniyor; katalog `noun` verdiyse ona uy, vermediyse
+   * eski davranışa (türden tahmin) düş.
    */
-  const thing = isSong ? 'song' : isSeries ? 'episode' : 'video';
+  const noun =
+    content?.noun ??
+    (content?.type === 'song'
+      ? 'song'
+      : content?.type === 'series'
+        ? 'episode'
+        : 'video');
+  const isSong = noun === 'song';
+  const isSeries = noun === 'episode';
+  const isFilm = noun === 'film';
+  const thing = isSong ? 'song' : isSeries ? 'episode' : isFilm ? 'film' : 'video';
   /**
    * ⚠️ Türkçe ipucu da türe uymalı. İngilizce tarafı "the video" derken
    * Türkçesi "Bölümün neyi anlattığını anlat" diyordu — podcast'in bölümü
    * yok. İki dil ayrı ayrı düzeltilmezse biri doğru, öteki saçma kalıyor.
    */
-  const seyTR = isSong ? 'Şarkının' : isSeries ? 'Bölümün' : 'İzlediğinin';
+  const seyTR = isSong
+    ? 'Şarkının'
+    : isSeries
+      ? 'Bölümün'
+      : isFilm
+        ? 'Filmin'
+        : 'İzlediğinin';
   const topic = content?.title ?? 'Günlük sohbet';
+
+  /**
+   * ⚠️ İpucu seviyeye uymak zorunda. Buraya sabit "Geçmiş zaman kullan"
+   * yazılmıştı; A1 kullanıcısına verildiğinde `LEVEL_SPEC.A1.structures`
+   * ile çelişiyordu (A1'in yapısı *present simple*). Uygulamanın bir yerinde
+   * "sadece geniş zaman öğren" derken başka yerinde geçmiş zaman istemek,
+   * öğrenciyi kilitleyen türden bir tutarsızlık.
+   */
+  const zamanIpucu =
+    toLevel(level) === 'A1'
+      ? 'Kısa cümleler kur, geniş zaman yeter.'
+      : 'Geçmiş zaman kullan.';
 
   const turns: ConversationPlan['turns'] = [
     {
       say: `Hi! Let's talk about the ${thing} you picked: ${topic}. First, tell me what it is about.`,
-      hint: `${seyTR} neyi anlattığını 3-4 cümleyle anlat. Geçmiş zaman kullan.`,
+      hint: `${seyTR} neyi anlattığını 3-4 cümleyle anlat. ${zamanIpucu}`,
       useWords: words.slice(0, 1),
       minWords: base + 6,
       followUp: 'That was short. Give me two more sentences — what happened next?',
@@ -603,12 +670,12 @@ export function buildLocalConversation(
     {
       say: isSong
         ? `How does this song make you feel? Describe it in your own words.`
-        : isSeries
+        : isSeries || isFilm
           ? `Describe one character. What kind of person are they?`
           : `Explain the main idea to a friend who did not watch it.`,
       hint: isSong
         ? 'Şarkının sende bıraktığı hissi anlat, iki sıfat kullan.'
-        : isSeries
+        : isSeries || isFilm
           ? 'Bir karakteri tarif et, iki sıfat kullan.'
           : 'İzlemeyen birine ana fikri anlat — kendi cümlelerinle.',
       useWords: words.slice(1, 2),
@@ -627,6 +694,8 @@ export function buildLocalConversation(
         ? `Would you recommend this song to a friend? Why or why not?`
         : isSeries
           ? `Will you watch the next episode? Why?`
+          : isFilm
+            ? `Would you recommend this film to a friend? Why or why not?`
           : `Would you recommend it to a friend? Why or why not?`,
       hint: 'Cevabını sebebiyle birlikte söyle; tek kelimelik cevap sayılmaz.',
       minWords: base,
