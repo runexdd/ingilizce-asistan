@@ -748,9 +748,99 @@ for (const entry of WORD_BANK) {
   if (!BY_KEY.has(key(entry.word))) BY_KEY.set(key(entry.word), entry);
 }
 
-/** Havuzdaki kayıt — kelime hangi biçimde yazılmış olursa olsun. */
+/**
+ * Öbek fiillerin kuyruğundaki edatlar.
+ *
+ * "struggle with", "look forward to", "run out of" — havuzda bazen tam öbek
+ * yazılı, bazen yalnız çekirdek fiil. Kuyruğu kırparak ikisini de yakalıyoruz.
+ */
+const PARTICLES = new Set([
+  'with', 'to', 'of', 'up', 'out', 'for', 'on', 'in', 'at',
+  'about', 'off', 'over', 'through', 'down', 'away', 'it',
+]);
+
+/**
+ * Havuzdaki kayıt — kelime hangi biçimde yazılmış olursa olsun.
+ *
+ * ⚠️ **Bu fonksiyonun bulamaması sessiz bir hataya dönüşüyor.** Ölçülen
+ * örnek: A1 kullanıcısının kartlarına *"to struggle with"* geliyordu.
+ * Havuzda `struggle` (B2) var ama arama anahtarı `struggle with` oluyor,
+ * eşleşme olmuyor, `levelOfWord` `null` dönüyor ve `isTooHardFor` — veri
+ * yokken hüküm vermemek için — **false** diyor. Yani kelime süzgeçten
+ * "bilinmiyor" diye geçiyor. Kullanıcı bunu üç kez bildirdi.
+ *
+ * Çözüm aramayı derinleştirmek: tam eşleşme yoksa sırayla
+ *   1. kuyruktaki edatları kırp  ("struggle with" → "struggle")
+ *   2. çekimi sadeleştir          ("struggling"   → "struggle")
+ *   3. ilk kelimeye düş           ("figure out"   → "figure")
+ * denenir. Hepsi başarısızsa yine `null` — o zaman gerçekten bilmiyoruz.
+ */
 export function lookupWord(word: string): BankWord | null {
-  return BY_KEY.get(key(word)) ?? null;
+  const k = key(word);
+  const tam = BY_KEY.get(k);
+  if (tam) return tam;
+
+  const parcalar = k.split(' ').filter(Boolean);
+  if (parcalar.length === 0) return null;
+
+  /** 1 — kuyruktaki edatları teker teker at */
+  const kirpik = [...parcalar];
+  while (kirpik.length > 1 && PARTICLES.has(kirpik[kirpik.length - 1])) {
+    kirpik.pop();
+    const bulunan = BY_KEY.get(kirpik.join(' '));
+    if (bulunan) return bulunan;
+  }
+
+  /** 2 — çekim eklerini sadeleştir (kırpılmış hâl üzerinde) */
+  const govde = kirpik.join(' ');
+  for (const sade of stemForms(govde)) {
+    const bulunan = BY_KEY.get(sade);
+    if (bulunan) return bulunan;
+  }
+
+  /** 3 — son çare: öbeğin ilk kelimesi */
+  if (parcalar.length > 1) {
+    const ilk = BY_KEY.get(parcalar[0]);
+    if (ilk) return ilk;
+    for (const sade of stemForms(parcalar[0])) {
+      const bulunan = BY_KEY.get(sade);
+      if (bulunan) return bulunan;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Bir kelimenin olası sade biçimleri: "studies" → "study", "running" → "run".
+ *
+ * Kural tabanlı ve kabaca; amaç sözlük doğruluğu değil, **cetvelin gözünden
+ * kaçmayı zorlaştırmak.** Yanlış bir sadeleştirme havuzda karşılık bulmazsa
+ * zaten bir şey değişmiyor.
+ */
+function stemForms(w: string): string[] {
+  const out: string[] = [];
+  const ek = (s: string) => {
+    if (s && s !== w && !out.includes(s)) out.push(s);
+  };
+
+  if (w.endsWith('ies')) ek(w.slice(0, -3) + 'y');
+  if (w.endsWith('es')) ek(w.slice(0, -2));
+  if (w.endsWith('s')) ek(w.slice(0, -1));
+  if (w.endsWith('ing')) {
+    ek(w.slice(0, -3));
+    ek(w.slice(0, -3) + 'e');
+    /** "running" → "run": ikizlenen sessiz harf */
+    const govde = w.slice(0, -3);
+    if (govde.length > 2 && govde.at(-1) === govde.at(-2)) ek(govde.slice(0, -1));
+  }
+  if (w.endsWith('ed')) {
+    ek(w.slice(0, -2));
+    ek(w.slice(0, -1));
+    const govde = w.slice(0, -2);
+    if (govde.length > 2 && govde.at(-1) === govde.at(-2)) ek(govde.slice(0, -1));
+  }
+  return out;
 }
 
 /**

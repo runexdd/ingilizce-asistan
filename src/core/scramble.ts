@@ -159,11 +159,31 @@ export function supportFor(
    * Harf açma, karıştırma yapılamayan cevaplarda da çalışmalı: uzun kalıpta
    * ("look forward to") karışık harf yardım etmez ama ilk harfler eder.
    */
-  const revealCount = Math.min(attempts, 2);
+  /**
+   * **Açılan harf sayısı kelimenin uzunluğuna göre.**
+   *
+   * ⚠️ Eskiden sabitti: 1. denemede 1 harf, 2. denemede 2 harf. Kullanıcının
+   * şikâyeti: *"yazma konusunda tek harf veriyoruz, tek tek harf geliyor,
+   * yapamayabilir — biraz daha yardımcı olalım."* Haklı: "restaurant"
+   * kelimesinde tek harf açmak hiçbir şey söylemiyor, "cat" kelimesinde ise
+   * tek harf zaten yarısı. Sabit sayı iki uçta da yanlış.
+   *
+   * Artık oran: 1. denemede harflerin ~%35'i, 2. denemede ~%60'ı, 3. denemede
+   * ~%75'i açılıyor. Kısa kelimede en az 1, uzun kelimede yeterince harf
+   * geliyor ve cevap yine de tamamlanmıyor — yazdıran hâlâ öğrenci.
+   */
+  const harfSayisi = coreAnswer(answer).replace(/[^\p{L}\p{N}]/gu, '').length;
+  const oran = attempts <= 0 ? 0 : attempts === 1 ? 0.35 : attempts === 2 ? 0.6 : 0.75;
+  const revealCount = Math.max(1, Math.min(harfSayisi - 1, Math.round(harfSayisi * oran)));
   const revealed = attempts >= 1 ? revealPrefix(answer, revealCount) : null;
 
+  /**
+   * Örnek cümle ipucu **2. denemede** geliyor (eskiden 3'tü). Dört deneme
+   * hakkı varken üçüncüye kadar cümleyi saklamak, öğrenciyi son iki hakkında
+   * yalnız bırakıyordu.
+   */
   const hint =
-    attempts >= 3 && options.example
+    attempts >= 2 && options.example
       ? blankOutExample(options.example, answer)
       : null;
 

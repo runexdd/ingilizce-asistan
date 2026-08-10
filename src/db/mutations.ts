@@ -378,6 +378,29 @@ export function answerCard(
   };
 }
 
+/**
+ * Kartı bir **önceki basamağa** döndürür — kullanıcının isteğiyle.
+ *
+ * Şikâyet aynen: *"yazmada kaldım, çıkıyorum tekrar giriyorum hâlâ aynı
+ * yerde; ne ileri ne geri gidebiliyorum. Oraya bir seçenek koyalım, geriye
+ * dönmek ister misin diye."*
+ *
+ * Yazma basamağında tıkanan biri kelimeyi henüz tanımıyordur; onu tanıma
+ * basamağına geri almak cezalandırma değil, doğru öğretim sırası. Puanlamaya
+ * dokunulmuyor — bu bir cevap değil, bir gezinme.
+ */
+export function stepCardBack(data: AppData, cardId: string): AppData {
+  return {
+    ...data,
+    cards: data.cards.map((c) => {
+      if (c.id !== cardId) return c;
+      const current = (c.stage ?? 1) as 1 | 2 | 3;
+      if (current <= 1) return c;
+      return { ...c, stage: (current - 1) as 1 | 2 | 3 };
+    }),
+  };
+}
+
 /** Aynı kategori tekrar görülürse sayacı artırır, yoksa yeni kayıt açar. */
 export function recordError(
   data: AppData,

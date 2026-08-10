@@ -33,6 +33,7 @@ import { describeInterval } from '../../src/core/srs';
 import {
   answerCard,
   markCardTaught,
+  stepCardBack,
   recordSession,
   seedDailyWords,
 } from '../../src/db/mutations';
@@ -77,7 +78,20 @@ export default function CardsScreen() {
     () => getStudyQueue(data, dailyNewWords),
     [data, dailyNewWords]
   );
-  const card = queue[0];
+  /**
+   * **Sıradaki kart elle değiştirilebilir.**
+   *
+   * Şikâyet: *"yazmada kaldım, çıkıyorum tekrar giriyorum hâlâ aynı yerde;
+   * ne ileri ne geri gidebiliyorum."* Ekran her zaman `queue[0]`'ı
+   * gösteriyordu ve sıralama kararlı olduğu için aynı kelime dönüp duruyordu:
+   * tıkanan kişi için çıkış yolu yoktu.
+   *
+   * `cursor` kuyruk içinde kaydırıyor. Cevap verilince sıfırlanıyor, çünkü
+   * cevaptan sonra kuyruk yeniden diziliyor ve eski konum başka bir kelimeye
+   * denk gelir.
+   */
+  const [cursor, setCursor] = useState(0);
+  const card = queue.length > 0 ? queue[cursor % queue.length] : undefined;
   const stage: CardStage = (card?.stage ?? 1) as CardStage;
 
   const [reviewedCount, setReviewedCount] = useState(0);
@@ -132,6 +146,8 @@ export default function CardsScreen() {
     });
     setLastResult(note);
     setReviewedCount((n) => n + 1);
+    /** Cevaptan sonra kuyruk yeniden diziliyor; imleç başa dönmeli */
+    setCursor(0);
   }
 
   return (
@@ -167,6 +183,38 @@ export default function CardsScreen() {
         {stage === 3 && (
           <SpeakStage key={`s-${card.id}`} card={card} onAnswer={handleAnswer} />
         )}
+
+        {/**
+          * **Çıkış yolları.** Kullanıcı bir kelimede tıkanınca ekranda
+          * yapabileceği bir şey kalmıyordu. İki düğme:
+          *
+          *  · "Başka kelime" — kuyrukta kaydırır, kelimeyi cevaplamadan
+          *    değiştirir. Kelime kaybolmuyor, sıraya geri giriyor.
+          *  · "Tanımaya dön" — yazma/telaffuz basamağında tıkanan kelimeyi
+          *    bir alt basamağa indirir. Yazamıyorsan önce tanıman gerekiyordur;
+          *    bu bir ceza değil, doğru öğretim sırası.
+          */}
+        <View style={styles.navRow}>
+          {queue.length > 1 && (
+            <Pressable
+              style={styles.navButton}
+              onPress={() => setCursor((c) => c + 1)}
+            >
+              <Text style={styles.navButtonText}>🔄  Başka kelime</Text>
+            </Pressable>
+          )}
+          {stage > 1 && (
+            <Pressable
+              style={styles.navButton}
+              onPress={() => {
+                update((d) => stepCardBack(d, card.id));
+                setLastResult(`"${card.word}" bir önceki basamağa alındı`);
+              }}
+            >
+              <Text style={styles.navButtonText}>←  Tanımaya dön</Text>
+            </Pressable>
+          )}
+        </View>
 
         {lastResult && <Text style={styles.lastResult}>{lastResult}</Text>}
       </ScrollView>
@@ -878,6 +926,20 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
 
+  navRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  navButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    alignItems: 'center',
+  },
+  navButtonText: { fontSize: 14, fontWeight: '700', color: colors.muted },
   lastResult: {
     fontSize: 13,
     color: colors.muted,
