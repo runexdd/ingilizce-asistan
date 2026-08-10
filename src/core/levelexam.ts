@@ -126,9 +126,18 @@ const WEIGHTS: Record<LevelExamSkill, number> = {
 export const LEVEL_EXAM_BANK: LevelExamItem[] = [
   /* ================================ A1 ================================ */
   { id: 'xa1v1', level: 'A1', skill: 'vocabulary', format: 'choice', prompt: 'We keep milk in the ___.', options: ['oven', 'fridge', 'sink', 'shelf'], answerIndex: 1 },
-  { id: 'xa1v2', level: 'A1', skill: 'vocabulary', format: 'choice', prompt: 'My brother is very ___. He never sits down.', options: ['busy', 'slow', 'quiet', 'tired'], answerIndex: 0 },
+  /**
+   * ⚠️ Bu soru bir zamanlar *"My brother is very ___. He never sits down."*
+   * idi ve doğru cevabı `busy`, çeldiricisi `quiet` — **ikisi de A2.**
+   * A1 sınavının A2 kelimesiyle ölçüm yapması, gerçekten A1 olan öğrencinin
+   * puanını haksız yere düşürüyordu; oysa bu sınavın tek işi "A1'in
+   * neresindesin" sorusuna cevap vermek. Hem cevap hem çeldiriciler artık
+   * A1 havuzundan.
+   */
+  { id: 'xa1v2', level: 'A1', skill: 'vocabulary', format: 'choice', prompt: 'I did not eat today. I am very ___.', options: ['hungry', 'happy', 'early', 'small'], answerIndex: 0 },
   { id: 'xa1v3', level: 'A1', skill: 'vocabulary', format: 'fill', prompt: 'Türkçe: "Kız kardeşim öğretmen." → İngilizce:', accept: ['my sister is a teacher'] },
-  { id: 'xa1v4', level: 'A1', skill: 'vocabulary', format: 'choice', prompt: "The opposite of 'cheap' is ___.", options: ['expensive', 'small', 'old', 'easy'], answerIndex: 0 },
+  /** Aynı sebep: `cheap` ve `expensive` A2'ydi, zıt anlam A1 çiftiyle kuruldu. */
+  { id: 'xa1v4', level: 'A1', skill: 'vocabulary', format: 'choice', prompt: "The opposite of 'big' is ___.", options: ['small', 'old', 'easy', 'cold'], answerIndex: 0 },
   { id: 'xa1g1', level: 'A1', skill: 'grammar', format: 'choice', prompt: 'There ___ two chairs in the room.', options: ['is', 'are', 'be', 'am'], answerIndex: 1 },
   { id: 'xa1g2', level: 'A1', skill: 'grammar', format: 'fill', prompt: 'He ___ (not / like) fish.', accept: ["doesn't like", 'does not like'], hint: 'iki kelime' },
   { id: 'xa1g3', level: 'A1', skill: 'grammar', format: 'choice', prompt: 'This is ___ book.', options: ['I', 'me', 'my', 'mine'], answerIndex: 2 },
@@ -431,8 +440,15 @@ export function describeLevelScore(level: string, score: number | undefined): st
   const next = index < LEVELS.length - 1 ? LEVELS[index + 1] : null;
 
   if (score >= 80) {
+    /**
+     * ⚠️ Ek her seviyede aynı değil. Sabit `'e` yazılıydı ve ekranda
+     * *"A2'e yakınsın"* çıkıyordu; seviyeler okunuşuna göre farklı ek alıyor:
+     * A2 "a-iki" → **'ye**, B1 "be-bir" → **'e**, C1 "ce-bir" → **'e**.
+     * Küçük görünür ama her gün ekranda duran bir cümle.
+     */
+    const ek = next && /2$/.test(next) ? 'ye' : 'e';
     return next
-      ? `${current} seviyesinin üst ucundasın — ${next}'e yakınsın`
+      ? `${current} seviyesinin üst ucundasın — ${next}'${ek} yakınsın`
       : `${current} seviyesini sağlam kullanıyorsun`;
   }
   if (score >= 60) return `${current} seviyesinin üst yarısındasın`;
