@@ -144,17 +144,61 @@ function headers(token) {
   };
 }
 
-async function findGist(token) {
-  const res = await fetch(`${API}/gists?per_page=100`, { headers: headers(token) });
-  if (!res.ok) throw new Error(`gist listesi alınamadı (${res.status})`);
-  const gists = await res.json();
-  const found = gists.find((g) =>
-    (g.description ?? '').startsWith(DESCRIPTION_PREFIX)
-  );
-  if (!found) throw new Error('senkron gist bulunamadı');
-  const full = await fetch(`${API}/gists/${found.id}`, { headers: headers(token) });
-  if (!full.ok) throw new Error(`gist okunamadı (${full.status})`);
-  return await full.json();
+/**
+ * Senkron gist'ini getirir — **mobil veriyi düşünerek.**
+ *
+ * ⚠️ Ölçüldü: gist listesi 2,7 KB, içerikli gist **77,5 KB**. Her tur ikisini
+ * birden çekiyordu; dakikada bir bakınca **günde ~115 MB** eder. Kullanıcı
+ * bilgisayarı telefonun hotspot'una bağlayacağını söyleyince bu rakam
+ * kabul edilemez hâle geldi.
+ *
+ * İki tasarruf:
+ *
+ * 1. **Gist kimliği bir kez bulunur**, sonra duruma yazılır. Liste isteği
+ *    ilk turdan sonra hiç yapılmaz.
+ * 2. **Koşullu istek (ETag).** GitHub her yanıtta bir `ETag` veriyor; bir
+ *    sonraki isteğe `If-None-Match` koyunca içerik değişmediyse **304** ve
+ *    boş gövde dönüyor — birkaç yüz bayt. Telefon yeni bir şey göndermediği
+ *    sürece tur neredeyse bedava.
+ *
+ * Sonuç: boştaki tur 80 KB'den ~0,4 KB'ye iniyor (yaklaşık 200 kat).
+ */
+async function fetchGist(token, state) {
+  let gistId = state.gistId;
+
+  if (!gistId) {
+    const res = await fetch(`${API}/gists?per_page=100`, { headers: headers(token) });
+    if (!res.ok) throw new Error(`gist listesi alınamadı (${res.status})`);
+    const gists = await res.json();
+    const found = gists.find((g) =>
+      (g.description ?? '').startsWith(DESCRIPTION_PREFIX)
+    );
+    if (!found) throw new Error('senkron gist bulunamadı');
+    gistId = found.id;
+  }
+
+  const conditional = state.etag ? { 'If-None-Match': state.etag } : {};
+  const full = await fetch(`${API}/gists/${gistId}`, {
+    headers: { ...headers(token), ...conditional },
+  });
+
+  // Değişmemiş — gövde yok, indirilen veri yok
+  if (full.status === 304) return { gistId, unchanged: true, etag: state.etag };
+
+  if (!full.ok) {
+    // Kimlik eskimişse (gist silinip yeniden oluşturulmuşsa) baştan ara
+    if (full.status === 404 && state.gistId) {
+      return fetchGist(token, { ...state, gistId: null, etag: null });
+    }
+    throw new Error(`gist okunamadı (${full.status})`);
+  }
+
+  return {
+    gistId,
+    gist: await full.json(),
+    etag: full.headers.get('etag'),
+    unchanged: false,
+  };
 }
 
 async function readGistFile(gist, name) {
@@ -170,7 +214,7 @@ async function loadState() {
   try {
     return JSON.parse(await readFile(STATE_FILE, 'utf8'));
   } catch {
-    return { lastOutboxAt: null, lastRunAt: 0 };
+    return { lastOutboxAt: null, lastRunAt: 0, gistId: null, etag: null, fails: 0 };
   }
 }
 
@@ -277,15 +321,32 @@ function runTeacher() {
  * çalıştırmayı önlüyor — yoksa nöbetçi her dakika jeton yakardı.
  */
 async function tick(token, options) {
-  const state = await loadState();
+  // `let`: gist kimliği ve ETag alındıktan sonra üzerine yazılıyor
+  let state = await loadState();
 
-  let gist;
+  let fetched;
   try {
-    gist = await findGist(token);
+    fetched = await fetchGist(token, state);
   } catch (error) {
     log(`bağlanılamadı: ${error.message}`);
     return;
   }
+
+  // Gist hiç değişmemiş — telefon yeni bir şey göndermemiş, veri harcamadık
+  if (fetched.unchanged) {
+    if (state.gistId !== fetched.gistId) {
+      await saveState({ ...state, gistId: fetched.gistId });
+    }
+    return;
+  }
+
+  const gist = fetched.gist;
+  /**
+   * Kimlik ve ETag hemen yazılıyor: tur ilerideki bir adımda hata verse bile
+   * bir sonraki tur liste isteğini tekrar yapmasın.
+   */
+  state = { ...state, gistId: fetched.gistId, etag: fetched.etag };
+  await saveState(state);
 
   const raw = await readGistFile(gist, 'outbox.json');
   if (!raw || raw.trim() === '{}') {
@@ -446,6 +507,9 @@ async function tick(token, options) {
   }
 
   await saveState({
+    // ⚠️ `state`'i yay: `gistId` ve `etag` burada düşerse her tur yeniden
+    // liste isteği yapılır ve koşullu istek tasarrufu tamamen kaybolur.
+    ...state,
     lastOutboxAt: sent ? generatedAt : state.lastOutboxAt,
     fails: sent ? 0 : fails + 1,
     lastLessonDate: lessonDate,
