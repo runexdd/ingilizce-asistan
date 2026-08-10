@@ -37,7 +37,7 @@ import {
   seedDailyWords,
 } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
-import { getStudyQueue, isLevelStale } from '../../src/db/selectors';
+import { activeSizing, getStudyQueue, isLevelStale } from '../../src/db/selectors';
 import type { Card } from '../../src/db/types';
 import { colors, radius, spacing } from '../../src/ui/theme';
 
@@ -68,7 +68,7 @@ export default function CardsScreen() {
    * kazanıyor" hatasının kelime tarafındaki kardeşi. Seviye değiştiyse
    * öğretmen yeni sayıyı söyleyene kadar seviye tavanı geçerli.
    */
-  const spec = specOf(data.profile.level, data.plan?.sizing);
+  const spec = specOf(data.profile.level, activeSizing(data));
   const dailyNewWords = isLevelStale(data)
     ? spec.maxNewWordsPerDay
     : (data.plan?.dailyNewWords ?? spec.maxNewWordsPerDay);

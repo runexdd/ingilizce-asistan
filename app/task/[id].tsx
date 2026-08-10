@@ -29,7 +29,7 @@ import {
   type SpeechInputHandle,
 } from '../../src/core/speechInput';
 import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
-import { isContentStale } from '../../src/db/selectors';
+import { activeLesson, activeSizing, isContentStale } from '../../src/db/selectors';
 import { useStore } from '../../src/db/store';
 import { TappableText } from '../../src/ui/TappableText';
 import { colors, radius, spacing } from '../../src/ui/theme';
@@ -57,9 +57,10 @@ function useTodayWords() {
   const { data } = useStore();
   return useMemo(() => {
     const todayISO = new Date().toISOString().slice(0, 10);
-    if (!data.lesson || data.lesson.date !== todayISO) return [];
-    return data.lesson.targetWords;
-  }, [data.lesson]);
+    const lesson = activeLesson(data);
+    if (!lesson || lesson.date !== todayISO) return [];
+    return lesson.targetWords;
+  }, [data]);
 }
 
 /* ------------------------------------------------------------------ yazma */
@@ -81,7 +82,7 @@ function WritingTask({ long }: { long: boolean }) {
    * Sabit "3-4 cümle yaz" demek A1'de yıldırır, B2'de hiçbir şey öğretmez.
    */
   const level = data.profile.level;
-  const spec = specOf(level, data.plan?.sizing);
+  const spec = specOf(level, activeSizing(data));
   const [minSentences, maxSentences] = spec.writingSentences;
   const fallbackSentences = long ? maxSentences + 2 : minSentences;
 
@@ -130,7 +131,7 @@ function WritingTask({ long }: { long: boolean }) {
           label="Yazma görevi"
           text={prompt}
           focus={suggested?.targetError}
-          size={`${level} · ${describeWritingSize(level, data.plan?.sizing)} · ${spec.structures}`}
+          size={`${level} · ${describeWritingSize(level, activeSizing(data))} · ${spec.structures}`}
         />
         <TargetWords words={todayWords} />
 
@@ -232,7 +233,7 @@ function ReadingTask() {
    */
   const stale = isContentStale(data);
 
-  const lesson = data.lesson;
+  const lesson = activeLesson(data);
   const todayISO = new Date().toISOString().slice(0, 10);
   const lessonPassage =
     !stale && lesson?.passage && lesson.date === todayISO ? lesson.passage : null;
@@ -295,7 +296,7 @@ function ReadingTask() {
           text={lessonPassage.text}
           glossary={lesson?.glossary ?? []}
           knownWords={data.cards.map((c) => c.word)}
-          maxExampleWords={specOf(data.profile.level, data.plan?.sizing).maxExampleWords}
+          maxExampleWords={specOf(data.profile.level, activeSizing(data)).maxExampleWords}
           onAddCard={(word, meaning) =>
             update((current) => addCard(current, word, meaning))
           }
@@ -500,7 +501,7 @@ function SpeakingTask() {
   const micSupported = useMemo(() => isSpeechInputSupported(), []);
 
   const level = data.profile.level;
-  const spec = specOf(level, data.plan?.sizing);
+  const spec = specOf(level, activeSizing(data));
 
   // Seviye değiştiyse öğretmenin görevi eski seviyeye ait — yerele düş
   const suggested = isContentStale(data)
@@ -611,7 +612,7 @@ function SpeakingTask() {
           }
           text={prompt}
           focus={suggested?.targetError}
-          size={`${level} · ${describeSpeakingSize(level, data.plan?.sizing)} · ${spec.structures}`}
+          size={`${level} · ${describeSpeakingSize(level, activeSizing(data))} · ${spec.structures}`}
         />
         <TargetWords words={todayWords} />
 

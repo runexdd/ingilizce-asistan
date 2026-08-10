@@ -568,6 +568,8 @@ export function startConversation(
     spokenTurns: 0,
     finished: false,
     syncState: 'pending',
+    /** Senaryoyu dondur — gerekçesi `ConversationRecord.plan` açıklamasında */
+    plan,
   };
 
   return { ...data, conversations: [...data.conversations, record] };
@@ -845,11 +847,23 @@ export function applyInbox(
     conversationAlternatives:
       inbox.conversationAlternatives ?? next.conversationAlternatives,
     /**
-     * Yeni paket geldiyse "kaçıncı sohbet" sayacı sıfırlanıyor: öğretmenin
-     * yeni yazdığı asıl sohbet gösterilsin, kullanıcı dün üç kez "başka bir
-     * sohbet" dedi diye bugün de üçüncü varyanttan başlamasın.
+     * "Kaçıncı sohbet" sayacı yalnızca **gerçekten yeni** bir sohbet
+     * geldiğinde sıfırlanır.
+     *
+     * ⚠️ Burada bir hata yapıldı ve tarayıcıda yakalandı: koşul
+     * `inbox.conversation ? undefined : …` idi, yani gelen kutusu her
+     * uygulandığında sayaç sıfırlanıyordu. Uygulama gist'i 90 saniyede bir
+     * çekip aynı paketi yeniden uyguladığı için kullanıcı "başka bir sohbet
+     * ver"e basıyor, bir dakika sonra sohbet eski hâline dönüyordu — düğme
+     * çalışmıyor görünüyordu.
+     *
+     * Ölçüt paketin varlığı değil, **değişmiş olması**: sohbetin tarihi
+     * elimizdekinden farklıysa yeni gündür, sayaç sıfırlanır.
      */
-    conversationVariant: inbox.conversation ? undefined : next.conversationVariant,
+    conversationVariant:
+      inbox.conversation && inbox.conversation.date !== next.conversationPlan?.date
+        ? undefined
+        : next.conversationVariant,
     conversations,
     scores,
     /**

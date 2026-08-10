@@ -48,7 +48,7 @@ import {
   recordSession,
   startConversation,
 } from '../src/db/mutations';
-import { getActiveConversation } from '../src/db/selectors';
+import { activeSizing, getActiveConversation } from '../src/db/selectors';
 import { useStore } from '../src/db/store';
 import { colors, radius, spacing } from '../src/ui/theme';
 
@@ -62,18 +62,31 @@ export default function ConversationScreen() {
    * seviye değiştiği anda sohbet de değişiyor, bilgisayarı beklemeden.
    */
   const active = useMemo(() => getActiveConversation(data), [data]);
-  const plan = active.plan;
-
-  /* Sohbet kaydı yoksa aç — ekran ilk açıldığında öğretmenin ilk repliği düşer */
-  useEffect(() => {
-    update((current) => startConversation(current, plan));
-    // Plan gün içinde değişmiyor; kimlik değil tarih üzerinden bağlanıyoruz
-  }, [plan.date, plan.topic, update]);
 
   const record = useMemo(
     () => (data.conversations ?? []).filter((c) => c.date === today).at(-1),
     [data.conversations, today]
   );
+
+  /**
+   * **Yürüyen senaryo kayıttan gelir.**
+   *
+   * ⚠️ Burası ikiye bölünmüştü: ekrandaki replik kayıttaki mesajdan, Türkçe
+   * ipucu ise her render'da yeniden hesaplanan `active.plan`'dan geliyordu.
+   * Sohbet sürerken seviye/zevk/varyant değişince ikisi ayrı senaryoya
+   * bakmaya başlıyordu — tarayıcıda ölçüldü: soru *"tell me what it is
+   * about"*, ipucu *"baştan başlayarak anlat"*. İki farklı sorunun parçaları.
+   *
+   * Kayıt açılırken plan donduruluyor; sohbet bitene kadar o geçerli.
+   * Kayıt yoksa (henüz başlamamış) canlı plan gösteriliyor.
+   */
+  const plan = record?.plan ?? active.plan;
+
+  /* Sohbet kaydı yoksa aç — ekran ilk açıldığında öğretmenin ilk repliği düşer */
+  useEffect(() => {
+    update((current) => startConversation(current, active.plan));
+    // Plan gün içinde değişmiyor; kimlik değil tarih üzerinden bağlanıyoruz
+  }, [active.plan.date, active.plan.topic, update]);
 
   /* --- akış durumu --- */
   const [turnIndex, setTurnIndex] = useState(0);
@@ -112,7 +125,7 @@ export default function ConversationScreen() {
   const finished = record?.finished ?? false;
   const currentTurn = plan.turns[turnIndex];
   const minWords = currentTurn
-    ? expectedWords(currentTurn, data.profile.level, data.plan?.sizing)
+    ? expectedWords(currentTurn, data.profile.level, activeSizing(data))
     : 6;
 
   /* ------------------------------------------------------------ mikrofon */
@@ -155,7 +168,7 @@ export default function ConversationScreen() {
       answer,
       followedUp,
       data.profile.level,
-      data.plan?.sizing
+      activeSizing(data)
     );
 
     const via = usedMic.current ? 'mic' : 'text';

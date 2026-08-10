@@ -452,6 +452,20 @@ export interface ConversationRecord {
   finished: boolean;
   syncState: 'pending' | 'synced';
   review?: ConversationReview;
+  /**
+   * Sohbet başlarken **dondurulan** senaryo.
+   *
+   * ⚠️ Bu alan olmadan ekran ikiye bölünüyordu: öğretmenin repliği kayıttaki
+   * mesajdan, Türkçe ipucu ise o an yeniden hesaplanan plandan geliyordu.
+   * Kullanıcı sohbet sürerken seviyesini, zevkini ya da sohbet varyantını
+   * değiştirdiğinde plan değişiyor, mesajlar değişmiyordu — tarayıcıda
+   * ölçülen sonuç: İngilizce soru *"tell me what it is about"* derken Türkçe
+   * ipucu *"baştan başlayarak anlat"* diyordu. İki farklı sorunun parçaları.
+   *
+   * Senaryo bir kez donduruluyor; sohbet bitene kadar dışarıdaki değişiklikler
+   * onu etkilemiyor. Yeni ayarlar yarınki sohbette geçerli olur.
+   */
+  plan?: ConversationPlan;
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { LevelSizing } from '../core/level';
 import { buildLocalConversation, pickLocalContent } from '../core/localcontent';
 import { addDays, toISODate } from '../core/srs';
 import { isTooHardFor, levelDistance } from '../core/wordbank';
@@ -54,9 +55,10 @@ export function getStudyQueue(
   today: Date = new Date()
 ): Card[] {
   const todayISO = toISODate(today);
+  const lesson = activeLesson(data);
   const lessonWords = new Set(
-    data.lesson?.date === todayISO
-      ? data.lesson.targetWords.map((w) => w.word.trim().toLowerCase())
+    lesson?.date === todayISO
+      ? lesson.targetWords.map((w) => w.word.trim().toLowerCase())
       : []
   );
 
@@ -173,9 +175,10 @@ export function getTodayWordProgress(
   today: Date = new Date()
 ): WordProgress[] {
   const iso = toISODate(today);
-  if (!data.lesson || data.lesson.date !== iso) return [];
+  const lesson = activeLesson(data);
+  if (!lesson || lesson.date !== iso) return [];
 
-  return data.lesson.targetWords.map((target) => {
+  return lesson.targetWords.map((target) => {
     const key = target.word.trim().toLowerCase();
     const card = data.cards.find((c) => c.word.trim().toLowerCase() === key);
     return {
@@ -256,6 +259,40 @@ function staleSince(data: AppData, changed: string | undefined): boolean {
  */
 export function isLevelStale(data: AppData): boolean {
   return staleSince(data, data.profile.levelChangedAt);
+}
+
+/**
+ * Öğretmenin **ölçü ayarları** — seviye değiştiyse yok sayılır.
+ *
+ * ⚠️ Tarayıcıda ölçülen hata: kullanıcı B1'den A1'e indiği hâlde konuşma
+ * görevinin altında *"A1 · yaklaşık 60 saniye · present perfect + since/for,
+ * 1. tip koşul"* yazıyordu. Seviye A1 ama süre ve gramer B1'in.
+ *
+ * Sebep: `plan.sizing` öğretmenin `LEVEL_SPEC` üzerine yazdığı ince ayar
+ * ve **hiçbir yerde eskime kontrolü yoktu.** Seviye düştüğünde eski ayar
+ * yeni seviyeyi eziyordu. Görev metninde eskime kontrolü vardı, ölçüde yoktu;
+ * kullanıcı ekranda ikisini birlikte gördüğü için "hâlâ yanlış geliyor"
+ * diyordu — haklıydı, yarısı düzeliyordu.
+ *
+ * `undefined` dönerse `specOf` saf `LEVEL_SPEC`'e düşer, yani seviyenin
+ * kendi ölçüsü geçerli olur.
+ */
+export function activeSizing(data: AppData): LevelSizing | undefined {
+  return isLevelStale(data) ? undefined : data.plan?.sizing;
+}
+
+/**
+ * Günün dersi — seviye değiştiyse yok sayılır.
+ *
+ * ⚠️ Aynı ölçümde çıktı: A1'e inen kullanıcının ekranında *"Bugünün
+ * kelimeleri: experience, opportunity, unusual"* yazıyordu. Bunlar B1
+ * kelimesi; A1 öğrencisi bunlarla cümle kuramaz ve günün teması boşa gider.
+ *
+ * Ders (hikâye + günün kelimeleri) öğretmenin seviyeye göre yazdığı bir
+ * bütün; seviye değişince tamamı geçersiz olur, yarısı değil.
+ */
+export function activeLesson(data: AppData): AppData['lesson'] | undefined {
+  return isLevelStale(data) ? undefined : data.lesson;
 }
 
 /**
@@ -383,7 +420,7 @@ export function getActiveConversation(
     plan: buildLocalConversation(
       content,
       data.profile.level,
-      data.plan?.sizing,
+      activeSizing(data),
       iso,
       variant
     ),
@@ -393,9 +430,10 @@ export function getActiveConversation(
 
 export function getDueCardCount(data: AppData, today: Date = new Date()): number {
   const iso = toISODate(today);
+  const lesson = activeLesson(data);
   const lessonWords = new Set(
-    data.lesson?.date === iso
-      ? data.lesson.targetWords.map((w) => w.word.trim().toLowerCase())
+    lesson?.date === iso
+      ? lesson.targetWords.map((w) => w.word.trim().toLowerCase())
       : []
   );
 

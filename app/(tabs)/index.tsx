@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { buildDailyPlan, type PlanTask } from '../../src/core/planner';
 import { useStore } from '../../src/db/store';
 import {
+  activeLesson,
   getActiveConversation,
   getDueCardCount,
   getTopErrorCategories,
@@ -29,7 +30,8 @@ export default function TodayScreen() {
       // Öğretmen görev gönderdiyse günün planı odur
       suggestedTasks: data.suggestedTasks,
       hasLessonPassage: Boolean(
-        data.lesson?.passage && data.lesson.date === today.toISOString().slice(0, 10)
+        activeLesson(data)?.passage &&
+        activeLesson(data)?.date === today.toISOString().slice(0, 10)
       ),
     });
   }, [data, lightMode]);
