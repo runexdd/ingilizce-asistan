@@ -8,4 +8,4 @@
  * telefona gecikmeli ulaşabiliyor. Buradaki numara ile eskisini görüp
  * sayfayı yenilemek gerektiği anlaşılır.
  */
-export const BUILD = 'v45 · 2026-08-11 · A1 kelime havuzu';
+export const BUILD = 'v46 · 2026-08-11 · A1 görev ve sohbet';

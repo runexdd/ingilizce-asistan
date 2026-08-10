@@ -36,6 +36,7 @@ import { A1_CESIT } from './catalog/a1-cesit';
 import { A1_MUZIK } from './catalog/a1-muzik';
 import { labelOf } from './tastes';
 import { keysFromNote } from './tastematch';
+import { isTooHardFor, levelOfWord } from './wordbank';
 
 /**
  * Ortak katalog — birden çok seviyeye açık, seviyeye özel olmayan içerikler.
@@ -478,6 +479,30 @@ function daySeed(date: string): number {
 }
 
 /**
+ * Karıştırıcı tohum — **birbirine çok benzeyen dizeler için.**
+ *
+ * ⚠️ `daySeed` (çarpan 31, klasik dize karması) küçük bir modda kötü dağılıyor:
+ * 31 ≡ 1 (mod 5) olduğu için `daySeed(s) % 5`, dizedeki karakterlerin
+ * **toplamının** mod 5'ine eşit. Yani "…|3|0" ile "…|2|1" aynı sonucu veriyor.
+ * Sohbet turları buna takıldı: yuvalar bağımsız seçiliyor sanılırken 30
+ * varyant yalnızca 10 farklı sohbet üretti (ölçüldü).
+ *
+ * FNV-1a + son karıştırma bitleri gerçekten dağıtıyor. Kararlılık aynı: aynı
+ * dize her zaman aynı sayıyı verir.
+ */
+function karisikTohum(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822507);
+  h ^= h >>> 13;
+  return h >>> 0;
+}
+
+/**
  * Bir içeriğin kullanıcının zevkleriyle kesişme **ağırlığı.**
  *
  * ## Bu ölçü iki kez yanlış kuruldu, ikisi de ekranda görüldü
@@ -719,6 +744,40 @@ export function pickLocalContent(
     return item.why;
   };
 
+  /**
+   * **İçeriğin öğrettiği kelimeler de seviye süzgecinden geçer.**
+   *
+   * ⚠️ `npm run gorev` ile ölçüldü: A1 kullanıcısına önerilen içeriğin
+   * kelimeleri `to mean`, `actually`, `to end up` (B1-B2) olabiliyordu ve
+   * bunlar sohbetin kelime turuna gömülüp *"Now use these words in your
+   * sentences: to mean, actually, to end up"* diye karşısına çıkıyordu.
+   *
+   * Sebebi yapısal: bir katalog öğesi birden çok seviyede geçerli olabiliyor
+   * (`levels: ['A1' … 'C2']`) ama kelime listesi **tek**. Aynı podcast A1'de
+   * de B1'de de öneriliyor; kelimeleri B1'e göre yazılmışsa A1'de yanlış.
+   * Kelimeyi seviyeye göre süzmek, her seviye için ayrı liste yazmadan
+   * doğru olanı veriyor.
+   */
+  /**
+   * ⚠️ **Burada "bilinmiyor" eleme sebebi DEĞİL** — kartlardakinin tersi.
+   *
+   * Kart tarafında A1 kapalı listedir: havuzda olmayan kelime gösterilmez.
+   * İçerik kelimeleri başka bir iş yapıyor. Bunlar "ezberlenecek çekirdek"
+   * değil, **o videoda kulak kabartılacak kelimeler**: F1 videosunda `lap`,
+   * `to overtake`, `pit stop`. `lap` havuzda yok ama zor da değil — tek
+   * heceli, somut, görüntüyle birlikte öğrenilir. Kapalı liste kuralını buraya
+   * da uygulamak (ilk denemede uygulandı) içeriğin öğrettiği her şeyi siliyor
+   * ve F1 videosunun kelime turu tek kelimeye düşüyordu.
+   *
+   * Doğru ölçü: **cetvel bir kelimenin üst seviye olduğunu biliyorsa** at
+   * (`actually` B1, `to end up` B2 — bunlar ölçüldü ve A1'e geliyordu),
+   * bilmiyorsa katalog yazarının seçimine güven.
+   */
+  const seviyeyeUygun = (kelimeler: CatalogItem['words']) =>
+    (kelimeler ?? []).filter(
+      (w) => levelOfWord(w.word) === null || !isTooHardFor(w.word, level)
+    );
+
   return picks.map((item) => ({
     type: item.type,
     title: item.title,
@@ -726,7 +785,7 @@ export function pickLocalContent(
     why: gerekce(item),
     instruction: item.instruction,
     skill: 'listening',
-    words: item.words,
+    words: seviyeyeUygun(item.words),
     watchFor: item.watchFor,
     noun: item.noun,
   }));
@@ -804,7 +863,15 @@ export function buildLocalConversation(
       ? 'Kısa cümleler kur, geniş zaman yeter.'
       : 'Geçmiş zaman kullan.';
 
-  const kelimeler = words.slice(0, 3).join(', ') || 'because, really, still';
+  /**
+   * İçeriğin kelimesi kalmadıysa (hepsi seviye süzgecinde elendi) sohbetin
+   * kelime turu boş kalmasın. ⚠️ Yedek de seviyeye uymalı: buraya sabit
+   * `because, really, still` yazılıydı ve `really`/`still` A1 havuzunda yok —
+   * yedeğin kendisi seviye üstü kelime öğretiyordu.
+   */
+  const yedekKelimeler =
+    toLevel(level) === 'A1' ? 'good, new, every day' : 'because, really, still';
+  const kelimeler = words.slice(0, 3).join(', ') || yedekKelimeler;
 
   /**
    * **Tur bankası.** Altı yuva, her yuvada beş farklı soru: 5⁶ = 15.625
@@ -824,7 +891,292 @@ export function buildLocalConversation(
    * değişen soruların **dil işi** aynı kalıyor, sadece soruluş biçimi ve
    * açısı dönüyor. Yoksa çeşitlilik uğruna ölçüm bozulurdu.
    */
-  const YUVALAR: ConversationPlan['turns'][] = [
+  /**
+   * **A1 tur bankası — ayrı kurulmak zorundaydı.**
+   *
+   * ⚠️ Kullanıcının bildirimi: *"sporun altında araba sporlarını seçince
+   * 'Formula 1 yarışını anlat' diyor; bunu A1 biri yapamaz. Oradaki tüm
+   * olasılıkları kontrol edip A1'e getirelim."*
+   *
+   * Teşhis, tahmin edilenden geniş çıktı. Yapı doğruydu (konu zevkten,
+   * zorluk seviyeden) ama **tur bankası seviyeyi hiç sormuyordu**: aşağıdaki
+   * genel banka bütün seviyelere aynı soruları veriyordu. `npm run gorev` 50
+   * zevk seçeneğinin hepsini gezdi ve A1'de **3805 ihlal** saydı. Örnekler:
+   *
+   *   "Give it a score out of ten, and explain your score."
+   *   "If you watched it again, what would you understand better?"
+   *   "Was there anything you did not understand?"
+   *   "Who would like this, and who would not? Say why."
+   *
+   * Sırasıyla: soyut değerlendirme, ikinci tip koşul cümlesi, geçmiş zaman,
+   * `would`. A1'de bunların hiçbiri yok — `LEVEL_SPEC.A1.structures` present
+   * simple diyor. İçerik doğru seçilse bile soru cevaplanamıyordu.
+   *
+   * A1 turlarının ölçüsü: **present simple, tek yapılı cümle, somut cevap.**
+   * "Beğendin mi" sorulur, "neden beğendin"in gerekçe zinciri sorulmaz;
+   * "hangi kelimeyi biliyorsun" sorulur, "hangi kelime seni zorladı"
+   * sorulmaz. Aynı dil işini yaptırır — anlatma, tarif, kelime kullanma —
+   * ama öğrencinin elindeki dilbilgisiyle.
+   */
+  const YUVALAR_A1: ConversationPlan['turns'][] = [
+    /* 1 — anlat */
+    [
+      {
+        say: `Hi! You picked ${topic}. Tell me: what is it about?`,
+        hint: `${seyTR} neyi anlattığını kısa cümlelerle söyle. Geniş zaman yeter.`,
+        minWords: base + 3,
+        followUp: 'That is short. Give me two more sentences.',
+      },
+      {
+        say: `Hello! Tell me about the ${thing}. What do you see in it?`,
+        hint: `İçinde ne görüyorsun? Kısa cümlelerle anlat.`,
+        minWords: base + 3,
+        followUp: 'Two more sentences, please.',
+      },
+      {
+        say: `Hi! I do not know this ${thing}. Tell me three things about it.`,
+        hint: `Hiç bilmeyen birine üç şey söyle. Her cümle kısa olsun.`,
+        minWords: base + 3,
+        followUp: 'One more thing, please.',
+      },
+      {
+        say: `Hey! What is in the ${thing}? Say three sentences.`,
+        hint: `İçinde ne var? Üç cümle kur.`,
+        minWords: base + 3,
+        followUp: 'Add two more sentences.',
+      },
+      {
+        say: `Hi! Tell me about ${topic}. Start with "It is about ...".`,
+        hint: `"It is about ..." diye başla ve devam et.`,
+        minWords: base + 3,
+        followUp: 'Keep going — two more sentences.',
+      },
+    ],
+    /* 2 — beğeni (gerekçe zinciri değil, tek cümlelik yorum) */
+    [
+      {
+        say: `Do you like it? Say one good thing about it.`,
+        hint: 'Beğendin mi? İyi bulduğun bir şeyi tek cümleyle söyle.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+      {
+        say: `Is it good or bad for you? Say one sentence.`,
+        hint: 'Sence iyi mi kötü mü? Tek cümle yeter.',
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: `What is your favourite part? Tell me about it.`,
+        hint: 'En sevdiğin kısım hangisi? Kısaca anlat.',
+        minWords: base,
+        followUp: 'Tell me a little more.',
+      },
+      {
+        say: `Do you want to see it again? Say yes or no, and one sentence.`,
+        hint: 'Tekrar izlemek/dinlemek ister misin? Evet ya da hayır, sonra bir cümle.',
+        minWords: base,
+        followUp: 'Now the sentence, please.',
+      },
+      {
+        say: `Is it happy or sad? Tell me in one or two sentences.`,
+        hint: 'Mutlu mu üzgün mü? Bir-iki cümleyle söyle.',
+        minWords: base,
+        followUp: 'One more sentence.',
+      },
+    ],
+    /* 3 — kolaylık ve kelime fark etme */
+    [
+      {
+        say: `Is it easy or hard for you? Say one sentence.`,
+        hint: 'Kolay mı zor mu geldi? Tek cümle.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+      {
+        say: `Tell me one word you know from it.`,
+        hint: 'İçinden bildiğin bir kelimeyi söyle.',
+        minWords: base,
+        followUp: 'Use that word in a sentence.',
+      },
+      {
+        say: `Do they speak fast or slow? Say one sentence.`,
+        hint: 'Hızlı mı konuşuyorlar yavaş mı? Tek cümle.',
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: `Tell me one new word from it. Then make a sentence.`,
+        hint: 'Yeni bir kelime söyle, sonra o kelimeyle bir cümle kur.',
+        minWords: base,
+        followUp: 'Now the sentence, please.',
+      },
+      {
+        say: `Do you understand it? Tell me one part you understand.`,
+        hint: 'Anlıyor musun? Anladığın bir kısmı söyle.',
+        minWords: base,
+        followUp: 'One more sentence about that part.',
+      },
+    ],
+    /* 4 — tarif */
+    [
+      {
+        say: isSong
+          ? `Is the song fast or slow? Say two things about it.`
+          : isSeries || isFilm
+            ? `Tell me about one person in it. Is he or she young or old?`
+            : `Tell me the main thing in it. Use one or two sentences.`,
+        hint: isSong
+          ? 'Şarkı hızlı mı yavaş mı? İki şey söyle.'
+          : isSeries || isFilm
+            ? 'Bir kişiyi anlat: genç mi yaşlı mı, nasıl biri?'
+            : 'En önemli şeyi bir-iki cümleyle söyle.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Give me one more detail.',
+      },
+      {
+        say: isSong
+          ? `What is the song about? Say two sentences.`
+          : isSeries || isFilm
+            ? `Where is it? Tell me about the place.`
+            : `What do you see in the video? Say two sentences.`,
+        hint: isSong
+          ? 'Şarkı neyi anlatıyor? İki cümle.'
+          : isSeries || isFilm
+            ? 'Nerede geçiyor? Yeri anlat.'
+            : 'Videoda ne görüyorsun? İki cümle.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+      {
+        say: isSong
+          ? `Do you listen to this song at home or in the car?`
+          : isSeries || isFilm
+            ? `Is the story happy or sad? Say two sentences.`
+            : `Tell a friend about it in two sentences.`,
+        hint: isSong
+          ? 'Bu şarkıyı nerede dinliyorsun? Evde mi, arabada mı?'
+          : isSeries || isFilm
+            ? 'Hikâye mutlu mu üzgün mü? İki cümle.'
+            : 'Bir arkadaşına iki cümleyle anlat.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: isSong
+          ? `Is the music loud or quiet? Use two adjectives.`
+          : isSeries || isFilm
+            ? `Describe one person: tall or short, happy or sad?`
+            : `Is it about people or about things? Tell me more.`,
+        hint: isSong
+          ? 'Müzik sesli mi sakin mi? İki sıfat kullan.'
+          : isSeries || isFilm
+            ? 'Bir kişiyi tarif et: uzun mu kısa mı, mutlu mu üzgün mü?'
+            : 'İnsanlarla mı ilgili, şeylerle mi? Biraz daha anlat.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Use one more adjective.',
+      },
+      {
+        say: isSong
+          ? `Is the singer a man or a woman? Say two more sentences.`
+          : isSeries || isFilm
+            ? `What do you see in it? Say two sentences.`
+            : `What is new for you in it? Say two sentences.`,
+        hint: isSong
+          ? 'Söyleyen kadın mı erkek mi? İki cümle daha ekle.'
+          : isSeries || isFilm
+            ? 'Ne görüyorsun? İki cümle.'
+            : 'Senin için yeni olan ne? İki cümle.',
+        useWords: words.slice(1, 2),
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+    ],
+    /* 5 — kelime kullanımı */
+    [
+      {
+        say: `Now use these words in your sentences: ${kelimeler}.`,
+        hint: 'Bugünün kelimelerini kendi cümlende kullan — kelime ancak kullanınca oturur.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'One more sentence with another word, please.',
+      },
+      {
+        say: `Make one sentence for every word: ${kelimeler}.`,
+        hint: 'Her kelime için bir cümle kur.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'You need one more word.',
+      },
+      {
+        say: `Use these words to talk about the ${thing}: ${kelimeler}.`,
+        hint: `Bu kelimelerle ${seyTR.toLowerCase()} hakkında konuş.`,
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        /**
+         * ⚠️ Burada bir zamanlar "kendi gününü / aileni anlat" vardı.
+         * Kelimeler içerikten geliyor; tarihi bir belgeselde `king`, `war`,
+         * `century` çıkıyor ve öğrenciden bunlarla **kendi gününü** anlatması
+         * isteniyordu — "My day has a war". Kelime kaynağıyla kalıbın
+         * bağlamı çakışıyordu; kalıp artık içeriğe bağlı.
+         */
+        say: `Say each word, then use it in a short sentence: ${kelimeler}.`,
+        hint: 'Her kelimeyi söyle, sonra kısa bir cümlede kullan.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'One more, with another word.',
+      },
+      {
+        say: `Make two sentences with these words: ${kelimeler}.`,
+        hint: 'Bu kelimelerle iki cümle kur.',
+        useWords: words.slice(0, 3),
+        minWords: base,
+        followUp: 'Now use the third word too.',
+      },
+    ],
+    /* 6 — kapanış */
+    [
+      {
+        say: `Do you like this ${thing}? Say yes or no, and one sentence.`,
+        hint: 'Beğendin mi? Evet ya da hayır, sonra bir cümle.',
+        minWords: base,
+        followUp: 'Now the sentence, please.',
+      },
+      {
+        say: `Is this good for a friend? Say one sentence.`,
+        hint: 'Bir arkadaşına uygun mu? Tek cümle.',
+        minWords: base,
+        followUp: 'One more sentence.',
+      },
+      {
+        say: `What do you want next — the same thing or a new thing?`,
+        hint: 'Sırada ne olsun? Aynısı mı, yenisi mi?',
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: `Tell me one thing you know now.`,
+        hint: 'Şimdi bildiğin bir şeyi söyle.',
+        minWords: base,
+        followUp: 'One more sentence about it.',
+      },
+      {
+        say: `Do you want more of this? Say one or two sentences.`,
+        hint: 'Bundan daha çok ister misin? Bir-iki cümle.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+    ],
+  ];
+
+  const YUVALAR_GENEL: ConversationPlan['turns'][] = [
     /* 1 — anlat */
     [
       {
@@ -1088,7 +1440,30 @@ export function buildLocalConversation(
    * `variant` artınca hepsi birden başka bir bileşime geçer.
    */
   const tohum = daySeed(date + (content?.title ?? ''));
-  const turns = YUVALAR.map((yuva, i) => yuva[(tohum + variant * 7 + i * 31) % yuva.length]);
+  /**
+   * Seviye bankayı seçiyor. Şimdilik iki banka var: A1 ve gerisi. Bir üst
+   * seviyenin fazı gelince kendi bankası buraya eklenir — faz kuralı.
+   */
+  const YUVALAR = toLevel(level) === 'A1' ? YUVALAR_A1 : YUVALAR_GENEL;
+
+  /**
+   * ⚠️ **Yuvalar birbirinden bağımsız seçilmeli.**
+   *
+   * Eski formül `(tohum + variant * 7 + i * 31) % 5` idi ve "5⁶ = 15.625
+   * bileşim" diye yazılmıştı. Doğru değildi: `31 mod 5 = 1`, yani yuva
+   * indeksi her adımda **tam olarak bir** kayıyordu. Altı yuva, beş seçenek —
+   * 6. yuva (kapanış) her zaman 1. yuvayla (anlat) aynı indeksi alıyor ve
+   * bütün sohbet tek bir sayıya bağlı kalıyordu. Bağımsız denetim ölçtü:
+   * 30 farklı `variant` denendi, ortaya **5 farklı sohbet** çıktı.
+   *
+   * Her yuva kendi tohumundan seçilince bağımsızlık gerçekten kuruluyor.
+   * Kararlılık korunuyor: aynı gün + aynı içerik + aynı varyant her zaman
+   * aynı sohbeti verir (kullanıcı ekranı kapatıp açınca soru değişmemeli).
+   */
+  const turns = YUVALAR.map(
+    (yuva, i) =>
+      yuva[karisikTohum(`${date}|${content?.title ?? ''}|${variant}|${i}`) % yuva.length]
+  );
 
   return {
     date,

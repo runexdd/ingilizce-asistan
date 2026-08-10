@@ -31,7 +31,8 @@
     "kelime": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/kelime-denetle.mjs",
     "cetvel": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/cetvel-denetle.mjs",
     "kart": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/kart-denetle.mjs",
-    "denetle": "npm run kelime && npm run cetvel && npm run kart"
+    "gorev": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/gorev-denetle.mjs",
+    "denetle": "npm run kelime && npm run cetvel && npm run kart && npm run gorev"
   },
   "private": true
 }

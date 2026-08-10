@@ -66,19 +66,38 @@ interface TasteTopic {
    * takım hangisi" A1'dir; "insanlar sporu neden bu kadar önemsiyor" değildir.
    */
   simple: string[];
+  /**
+   * **Üst alan anahtarları** — bu blok bu anahtarlarla eşleşiyorsa eşleşme
+   * "genel"dir, "özel" değil.
+   *
+   * ⚠️ Neden gerekli: `tastes.ts`'te alt seçenekler üst alanı **gerektiriyor**
+   * (`sports` adımının `requiresArea: 'spor'`). Yani "Motor sporları"
+   * seçen kişinin zevklerinde her zaman `spor` da vardır. Motor için ayrı bir
+   * blok açmak tek başına yetmedi: genel spor bloğu `spor` anahtarıyla
+   * eşleşmeye devam etti, `topicsFor` iki bloğu birden döndürdü ve konular
+   * gün gün sırayla geldi. Sonuç: kullanıcı **günlerin yarısında** hâlâ
+   * *"Talk about your favourite team"* alıyordu — bildirdiği hatanın ta
+   * kendisi, yarı yarıya. (Bağımsız denetim, 2026-08-11: 60 günün 30'u.)
+   *
+   * Kural: özel bir anahtarla eşleşen blok varsa, yalnızca üst alan
+   * anahtarıyla eşleşen bloklar devre dışı kalır. Alt dal seçilmemişse genel
+   * blok yine tek başına çalışır.
+   */
+  broad?: string[];
   /** Türkçe ipucunda geçen alan adı */
   labelTR: string;
 }
 
 const TASTE_TOPICS: TasteTopic[] = [
   {
-    keys: ['spor', 'futbol', 'basketbol', 'tenis', 'motor', 'dovus'],
+    keys: ['spor', 'futbol', 'basketbol', 'tenis', 'dovus'],
+    broad: ['spor'],
     labelTR: 'spor',
     simple: [
       'your favourite team',
       'a sport you like to watch',
-      'the last match you watched',
-      'a player you like',
+      'the sport you play or want to play',
+      'the days you watch sport',
     ],
     subjects: [
       'the last match you watched',
@@ -89,11 +108,35 @@ const TASTE_TOPICS: TasteTopic[] = [
     ],
   },
   {
+    /**
+     * **Motor sporları kendi bloğunda.**
+     *
+     * ⚠️ Kullanıcının bildirimi: motor sporlarını seçen kişiye "takımını
+     * anlat", "izlediğin son maçı anlat" çıkıyordu. Spor bloğunun konuları
+     * takım-maç dünyasına göre yazılmıştı; yarışta maç yok, oyuncu yok.
+     * Alt dal seçtirip konuyu üst daldan vermek, seçimi anlamsız kılıyor.
+     */
+    keys: ['motor'],
+    labelTR: 'motor sporları',
+    simple: [
+      'a car you like',
+      'a driver you like',
+      'when you watch a race',
+      'the colour of your favourite car',
+    ],
+    subjects: [
+      'the last race you watched',
+      'a driver you find impressive',
+      'what makes a race worth watching',
+      'whether the car or the driver matters more',
+    ],
+  },
+  {
     keys: ['fitness', 'kosu', 'dogaspor'],
     labelTR: 'spor ve hareket',
     simple: [
       'what you do to keep fit',
-      'the days of the week you exercise',
+      'the days you do sport',
       'how you feel after sport',
       'a place where you like to walk or run',
     ],
@@ -109,9 +152,9 @@ const TASTE_TOPICS: TasteTopic[] = [
     labelTR: 'müzik',
     simple: [
       'the music you like',
-      'a singer or band you listen to',
       'when you listen to music',
       'a song you know well',
+      'the music you play in the car',
     ],
     subjects: [
       'the last song you listened to',
@@ -123,6 +166,7 @@ const TASTE_TOPICS: TasteTopic[] = [
   },
   {
     keys: ['dizi', 'superhero', 'scifi', 'polisiye', 'komedi', 'dram', 'animasyon', 'tarihi', 'fantastik', 'gerilim'],
+    broad: ['dizi'],
     labelTR: 'dizi ve film',
     simple: [
       'a film or show you like',
@@ -142,9 +186,9 @@ const TASTE_TOPICS: TasteTopic[] = [
     keys: ['belgesel', 'bilim', 'tarih'],
     labelTR: 'belgesel ve bilim',
     simple: [
-      'an animal you find interesting',
+      'an animal you like',
       'a place in the world you want to see',
-      'something new you learned this week',
+      'something you want to learn',
       'the weather where you live',
     ],
     subjects: [
@@ -160,7 +204,7 @@ const TASTE_TOPICS: TasteTopic[] = [
     simple: [
       'a game you play',
       'when you play games',
-      'the game you played last',
+      'the game you play with friends',
       'who you play with',
     ],
     subjects: [
@@ -177,7 +221,7 @@ const TASTE_TOPICS: TasteTopic[] = [
       'the phone you use',
       'an app you open every day',
       'how many hours you use your phone',
-      'a thing you bought online',
+      'a thing you want to buy',
     ],
     subjects: [
       'an app you use every day',
@@ -206,9 +250,9 @@ const TASTE_TOPICS: TasteTopic[] = [
     keys: ['seyahat', 'seyahat-ortam'],
     labelTR: 'seyahat',
     simple: [
-      'a city you visited',
+      'a city you want to see',
       'the place you want to go',
-      'how you travel — by car, bus or plane',
+      'how you go to work — by car, bus or train',
       'what you take with you on a trip',
     ],
     subjects: [
@@ -323,11 +367,55 @@ function tasteKeys(tastes: Tastes | undefined): Set<string> {
   ]);
 }
 
-/** Kullanıcının zevklerine değen konu blokları */
+/**
+ * Kullanıcının zevklerine değen konu blokları.
+ *
+ * **Özel eşleşme genel eşleşmeyi eler.** Gerekçesi `TasteTopic.broad`
+ * açıklamasında: alt dal seçimi üst alanı zorunlu kıldığı için, alt dalı
+ * seçen kişi üst alanın bloğunu da alıyordu ve günlerin yarısında yanlış
+ * konuyla karşılaşıyordu.
+ */
 function topicsFor(tastes: Tastes | undefined): TasteTopic[] {
   const keys = tasteKeys(tastes);
   if (keys.size === 0) return [];
-  return TASTE_TOPICS.filter((t) => t.keys.some((k) => keys.has(k)));
+
+  const tutan = TASTE_TOPICS.filter((t) => t.keys.some((k) => keys.has(k)));
+
+  /** Bir blok, üst alan anahtarı olmayan bir anahtarla tutuyorsa "özel" */
+  const ozelMi = (t: TasteTopic) =>
+    t.keys.some((k) => keys.has(k) && !(t.broad ?? []).includes(k));
+
+  const ozeller = tutan.filter(ozelMi);
+  if (ozeller.length === 0) return tutan;
+
+  /**
+   * Genel blok, **özel bir bloğun kapsadığı alanla** aynı üst alandaysa
+   * düşer. Farklı bir alandan gelen genel blok (örn. sadece "Müzik"
+   * seçilmiş) yerinde kalır — kullanıcı iki ayrı hobi seçtiyse ikisini de
+   * görmeli.
+   */
+  const ozelAnahtarlar = new Set(ozeller.flatMap((t) => t.keys));
+  return tutan.filter(
+    (t) => ozelMi(t) || !t.keys.some((k) => keys.has(k) && ustAlanKapsandi(k, ozelAnahtarlar))
+  );
+}
+
+/**
+ * `spor` gibi bir üst alan anahtarı, özel blokların dünyasına ait mi?
+ *
+ * `tastes.ts` bunu `requiresArea` ile kuruyor: `sports` adımı `spor`
+ * gerektiriyor, `screen` adımı `dizi`. Yani bir üst alan anahtarı, ancak o
+ * alanın alt seçeneklerinden biri seçilmişse "kapsanmış" sayılır.
+ */
+const UST_ALAN_ALTLARI: Record<string, string[]> = {
+  spor: ['futbol', 'basketbol', 'tenis', 'dovus', 'motor', 'fitness', 'kosu', 'dogaspor'],
+  dizi: ['superhero', 'scifi', 'polisiye', 'komedi', 'dram', 'animasyon', 'tarihi', 'fantastik', 'gerilim'],
+  muzik: ['rock', 'metal', 'pop', 'rap', 'caz', 'klasik', 'blues', 'country', 'elektronik', 'akustik'],
+};
+
+function ustAlanKapsandi(anahtar: string, ozelAnahtarlar: Set<string>): boolean {
+  const altlar = UST_ALAN_ALTLARI[anahtar];
+  return !!altlar && altlar.some((a) => ozelAnahtarlar.has(a));
 }
 
 /**
@@ -400,12 +488,18 @@ export function taskTopicLabel(
 
 /** Konuşma görevleri — süre çağıran tarafta `LEVEL_SPEC`'ten eklenir. */
 const SPEAKING: PromptSet = {
+  /**
+   * ⚠️ A1 havuzunda geçmiş zaman kalmıştı: *"Describe your morning today.
+   * What **did** you eat and drink?"* `LEVEL_SPEC.A1.structures` present
+   * simple diyor; öğrenci "did" yapısını daha görmedi. `npm run gorev`
+   * bunu 50 zevk seçeneğini gezerken buldu.
+   */
   A1: [
-    'Describe your morning today. What did you eat and drink?',
+    'Describe your morning. What do you eat and drink?',
     'Talk about your family. Who lives with you?',
     'Describe the room you are in right now.',
     'What do you do every Saturday? Say three things.',
-    'Talk about your favourite food. Why do you like it?',
+    'Talk about your favourite food. Do you cook it?',
     'Describe your way to work or school.',
     'Talk about a person you see every day.',
     'What is the weather like today? Do you like it?',
