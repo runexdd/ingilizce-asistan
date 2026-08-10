@@ -308,7 +308,8 @@ export default function TeacherScreen() {
             * sayaçla yürüyor; senaryoyu ortadan değiştirmek ekrandaki
             * konuşmayla planı birbirinden ayırırdı.
             */}
-          {!todayConversation ? (
+          {!todayConversation ||
+          (todayConversation.turnsDone === 0 && !todayConversation.finished) ? (
             <Pressable
               style={styles.secondaryButton}
               onPress={() => update((d) => nextConversationVariant(d))}

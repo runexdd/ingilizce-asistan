@@ -588,11 +588,30 @@ export function nextConversationVariant(
   today: Date = new Date()
 ): AppData {
   const iso = toISODate(today);
-  if (data.conversations.some((c) => c.date === iso)) return data;
+  const bugunku = data.conversations.filter((c) => c.date === iso);
+
+  /**
+   * **Cevap verilmişse değiştirme.** Konuşmanın ortasında senaryoyu
+   * değiştirmek verilen cevapları öksüz bırakır.
+   *
+   * ⚠️ Ama sadece *ekranı açmış* olmak cevap vermek değil. Önce "bugün kayıt
+   * varsa dokunma" deniyordu ve tarayıcıda görüldü ki sohbet ekranına bir kez
+   * girmek kaydı açıyor, düğme de o günlük tamamen kayboluyordu. Kullanıcı
+   * "sohbeti değiştir kısmı yok" derken büyük ihtimalle bunu görüyordu.
+   *
+   * Ölçüt kaydın varlığı değil, **cevap verilmiş olması**: hiç tur
+   * tamamlanmamışsa boş kayıt atılıp yenisi kuruluyor.
+   */
+  const dokunulmus = bugunku.some((c) => c.turnsDone > 0 || c.finished);
+  if (dokunulmus) return data;
 
   const current =
     data.conversationVariant?.date === iso ? data.conversationVariant.index : 0;
-  return { ...data, conversationVariant: { date: iso, index: current + 1 } };
+  return {
+    ...data,
+    conversations: data.conversations.filter((c) => c.date !== iso),
+    conversationVariant: { date: iso, index: current + 1 },
+  };
 }
 
 export function addConversationMessage(
