@@ -26,13 +26,31 @@ param(
 $taskName = 'IngilizceOgretmenNobetcisi'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
+# Yedek yontem: Baslangic klasoru.
+#
+# Zamanlanmis Gorev olusturmak bu makinede yonetici yetkisi istedi ("Erisim
+# engellendi"). Baslangic klasoru kullanicinin kendi klasoru; yetki
+# gerektirmiyor ve ayni isi goruyor: oturum acilinca nobetci penceresiz
+# baslar. Gorev olusturulabiliyorsa o tercih edilir (yeniden baslatma,
+# pil ayarlari gibi ustunlukleri var), olmuyorsa buraya dusulur.
+$startupDir = [Environment]::GetFolderPath('Startup')
+$vbsPath = Join-Path $startupDir 'ingilizce-nobetci.vbs'
+
 if ($Kaldir) {
+    $bulundu = $false
     try {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
-        Write-Output "Nobetci kaldirildi."
+        Write-Output "Zamanlanmis gorev kaldirildi."
+        $bulundu = $true
     } catch {
-        Write-Output "Kayitli bir nobetci bulunamadi."
+        # kayitli gorev yoktu
     }
+    if (Test-Path $vbsPath) {
+        Remove-Item $vbsPath -Force
+        Write-Output "Baslangic klasorundeki nobetci kaldirildi."
+        $bulundu = $true
+    }
+    if (-not $bulundu) { Write-Output "Kayitli bir nobetci bulunamadi." }
     return
 }
 
@@ -76,6 +94,49 @@ try {
     Write-Output "Durumu gormek icin : Get-ScheduledTask -TaskName $taskName"
     Write-Output "Kaldirmak icin     : powershell -ExecutionPolicy Bypass -File scripts\nobetci-kur.ps1 -Kaldir"
 } catch {
-    Write-Output "HATA: gorev olusturulamadi - $($_.Exception.Message)"
-    Write-Output "Yonetici olarak calistirmayi dene."
+    Write-Output "Zamanlanmis gorev olusturulamadi ($($_.Exception.Message))."
+    Write-Output "Baslangic klasoru yontemine geciliyor - yonetici yetkisi gerekmiyor."
+
+    # Penceresiz baslatici. cmd/ps1 dogrudan konsa her acilista bir pencere
+    # acilip kapaniyor; .vbs ile Run'in ucuncu parametresi 0 = gizli.
+    $node = (Get-Command node).Source
+
+    # Yolu 8.3 KISA ADA cevir - basliktaki tum kodlama derdini bitirir.
+    #
+    # Proje yolu Turkce karakter iceriyor ("ingilizce kisisel uygulama") ve
+    # .vbs dosyasi hangi kodlamayla yazilirsa yazilsin (ASCII, ANSI, UTF-16)
+    # "s" harfi yolda bozuluyordu; wscript "Sistem belirtilen yolu bulamiyor"
+    # deyip cikiyor, uustelik SESSIZCE - dosya duruyor, nobetci baslamiyor.
+    # Kisa ad (C:\Users\omers\Desktop\INGILI~1\...) saf ASCII oldugu icin
+    # hicbir kodlamada bozulmuyor ve Windows onu ayni klasore cozuyor.
+    $fso = New-Object -ComObject Scripting.FileSystemObject
+    $kisaYol = $fso.GetFolder($projectRoot).ShortPath
+
+    $vbs = @"
+' Ingilizce asistani - ogretmen nobetcisi (penceresiz baslatici)
+' Kaldirmak icin bu dosyayi sil ya da:
+'   powershell -ExecutionPolicy Bypass -File scripts\nobetci-kur.ps1 -Kaldir
+Set sh = CreateObject("WScript.Shell")
+sh.CurrentDirectory = "$kisaYol"
+sh.Run """$node"" scripts\watch.mjs", 0, False
+"@
+    # UYARI - burada iki kez tuzaga dusuldu, ucuncusunu yasama:
+    #
+    # Proje yolu Turkce karakter iceriyor ("ingilizce kisisel uygulama").
+    #  - `-Encoding ASCII`   : "s" harfini "?" yapiyor.
+    #  - `-Encoding Default` : sistemin ANSI kod sayfasi Turkce degil (cp1252),
+    #                          "s"yi sedilsiz "s"ye ceviriyor.
+    # Ikisinde de dosya sorunsuz olusuyor ama wscript "Sistem belirtilen yolu
+    # bulamiyor" deyip cikiyor - yani nobetci acilista sessizce baslamiyor.
+    #
+    # Windows Script Host, BOM'lu UTF-16 .vbs dosyalarini dogru okuyor.
+    Set-Content -Path $vbsPath -Value $vbs -Encoding Unicode
+
+    if (Test-Path $vbsPath) {
+        Write-Output "Nobetci baslangic klasorune kuruldu:"
+        Write-Output "  $vbsPath"
+        Write-Output "Kaldirmak icin : powershell -ExecutionPolicy Bypass -File scripts\nobetci-kur.ps1 -Kaldir"
+    } else {
+        Write-Output "HATA: baslangic klasorune de yazilamadi."
+    }
 }
