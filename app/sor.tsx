@@ -93,8 +93,8 @@ export default function AskScreen() {
 
         {waiting > 0 && !justSent && (
           <Text style={styles.waitingLine}>
-            {waiting} soru cevap bekliyor. Ayarlar → Şimdi senkronla dersen yola
-            çıkarlar.
+            {waiting} soru cevap bekliyor. Gönderme işini uygulama kendisi
+            yapıyor; öğretmen çalıştığında cevaplar buraya düşecek.
           </Text>
         )}
 

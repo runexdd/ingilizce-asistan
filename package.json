@@ -33,7 +33,8 @@
     "kart": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/kart-denetle.mjs",
     "gorev": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/gorev-denetle.mjs",
     "mufredat": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/mufredat-denetle.mjs",
-    "denetle": "npm run kelime && npm run cetvel && npm run kart && npm run gorev && npm run mufredat"
+    "muzik": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/muzik-denetle.mjs",
+    "denetle": "npm run kelime && npm run cetvel && npm run kart && npm run gorev && npm run mufredat && npm run muzik"
   },
   "private": true
 }

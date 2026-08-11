@@ -175,7 +175,7 @@ export default function TeacherScreen() {
         <Text style={styles.heroLabel}>Öğretmenin bugünkü notu</Text>
         <Text style={styles.heroText}>
           {plan?.note ??
-            'Henüz not yok. Bir görev yapıp Ayarlar → Şimdi senkronla dediğinde öğretmen buraya yazacak.'}
+            'Henüz not yok. Bir görev yaptığında uygulama bunu kendiliğinden öğretmene gönderiyor; notu bir sonraki turda buraya yazacak.'}
         </Text>
         {plan?.advice ? (
           <View style={styles.adviceBox}>

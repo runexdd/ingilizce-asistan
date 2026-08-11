@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { buildDailyPlan, type PlanTask } from '../../src/core/planner';
+import { scenarioForDay } from '../../src/core/scenarios';
+import { toISODate } from '../../src/core/srs';
 import { useStore } from '../../src/db/store';
 import {
   activeLesson,
@@ -13,6 +15,15 @@ import { colors, radius, spacing } from '../../src/ui/theme';
 
 export default function TodayScreen() {
   const { data } = useStore();
+
+  /**
+   * Günün canlandırması — sohbetten ayrı bir iş, ayrı bir kart.
+   * A1 dışında `null` döner ve kart hiç görünmez (faz kuralı).
+   */
+  const scenario = useMemo(
+    () => scenarioForDay(data.profile.level, data.profile.tastes, toISODate(new Date())),
+    [data.profile.level, data.profile.tastes]
+  );
   const router = useRouter();
   const [lightMode, setLightMode] = useState(false);
 
@@ -101,6 +112,27 @@ export default function TodayScreen() {
             </Text>
           </View>
           <Text style={styles.feedbackArrow}>→</Text>
+        </Pressable>
+      )}
+
+      {/**
+        * **Canlandırma** — günün sohbetinden ayrı, kendi kartı.
+        *
+        * Kullanıcının kararı: *"Bu senaryo kısmını başka bir uygun yere
+        * koyabilir miyiz, beraber koymak yerine."* İkisi farklı iş yapıyor:
+        * sohbet bir içerik üzerine konuşturur, canlandırma bir durumun içine
+        * sokar. Aynı kartta dursalar biri ötekinin gölgesinde kalırdı.
+        */}
+      {scenario && (
+        <Pressable
+          style={({ pressed }) => [styles.scenarioCard, pressed && styles.taskPressed]}
+          onPress={() => router.push('/scenario')}
+        >
+          <View style={styles.taskMain}>
+            <Text style={styles.scenarioTitle}>🎭 Canlandırma: {scenario.title}</Text>
+            <Text style={styles.scenarioText}>{scenario.setting}</Text>
+          </View>
+          <Text style={styles.scenarioArrow}>→</Text>
         </Pressable>
       )}
 
@@ -201,6 +233,18 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: spacing.xs + 2,
   },
+  scenarioCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.weekendSoft,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  scenarioTitle: { fontSize: 16, fontWeight: '700', color: colors.weekend },
+  scenarioText: { fontSize: 13, color: colors.muted, marginTop: 2, lineHeight: 18 },
+  scenarioArrow: { fontSize: 18, color: colors.weekend, fontWeight: '700' },
+
   feedbackCard: {
     flexDirection: 'row',
     alignItems: 'center',

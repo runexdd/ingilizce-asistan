@@ -400,8 +400,8 @@ function ReadingTask() {
     return (
       <View style={[styles.screen, styles.centered]}>
         <Text style={styles.emptyText}>
-          Okuma içeriği bulunamadı. Ayarlar → Şimdi senkronla dediğinde öğretmen
-          sana seviyene uygun bir metin gönderecek.
+          Okuma içeriği bulunamadı. Öğretmen bir sonraki turunda sana
+          seviyene uygun bir metin gönderecek.
         </Text>
       </View>
     );
@@ -745,9 +745,8 @@ function SavedNotice() {
     <View style={styles.notice}>
       <Text style={styles.noticeTitle}>Kaydedildi ✅</Text>
       <Text style={styles.noticeText}>
-        Ayarlar → Şimdi senkronla dediğinde öğretmene gidecek. Bilgisayarda{' '}
-        <Text style={styles.bold}>/ogretmen</Text> çalıştırınca düzeltmesi
-        hazırlanıp buraya dönecek.
+        Birkaç saniye içinde kendiliğinden öğretmene gidiyor. Bilgisayardaki
+        nöbetçi öğretmeni çalıştırınca düzeltmesi hazırlanıp buraya dönecek.
       </Text>
     </View>
   );

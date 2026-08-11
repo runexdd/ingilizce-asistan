@@ -18,6 +18,7 @@ import type {
   TargetPoint,
   TaskRecord,
   TeacherPlan,
+  ScenarioRun,
   TeacherQuestion,
 } from './types';
 
@@ -333,6 +334,42 @@ export function extendWordStudy(
   };
 
   return seedDailyWords(genis, dailyNewWords, today);
+}
+
+/**
+ * Biten canlandırmayı kaydeder.
+ *
+ * ⚠️ Bu olmadan ekran yalan söylüyordu: bitiş kutusunda "öğretmen cümlelerini
+ * görecek" yazıyordu ama cevaplar yalnızca ekranın kendi belleğindeydi ve
+ * ekran kapanınca yok oluyordu. Kayıt outbox'a giriyor; öğretmen düzeltmesini
+ * bir sonraki turda yazıyor.
+ *
+ * Aynı gün aynı senaryo tekrar yapılırsa **üstüne yazılır** — kullanıcı
+ * beğenmeyip baştan yaptıysa geçerli olan sonuncusudur.
+ */
+export function saveScenarioRun(
+  data: AppData,
+  run: Omit<ScenarioRun, 'syncState'>,
+  today: Date = new Date()
+): AppData {
+  const iso = toISODate(today);
+  const kayit: ScenarioRun = { ...run, date: iso, syncState: 'pending' };
+  const oncekiler = (data.scenarioRuns ?? []).filter(
+    (r) => !(r.date === iso && r.scenarioId === run.scenarioId)
+  );
+  /** Son 30 kayıt yeter; öğretmen zaten yakın geçmişe bakıyor */
+  return { ...data, scenarioRuns: [...oncekiler, kayit].slice(-30) };
+}
+
+/** Canlandırmalar gist'e gönderildi — bir daha gönderilmesin. */
+export function markScenarioRunsSynced(data: AppData): AppData {
+  if (!(data.scenarioRuns ?? []).length) return data;
+  return {
+    ...data,
+    scenarioRuns: (data.scenarioRuns ?? []).map((r) =>
+      r.syncState === 'pending' ? { ...r, syncState: 'synced' as const } : r
+    ),
+  };
 }
 
 /**

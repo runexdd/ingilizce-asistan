@@ -356,6 +356,19 @@ export interface TeacherScore {
   verdict: string;
 }
 
+/** Bir canlandırmanın kaydı — öğretmene giden ham veri */
+export interface ScenarioRun {
+  /** 'YYYY-MM-DD' */
+  date: string;
+  scenarioId: string;
+  /** Türkçe başlık — öğretmen bağlamı görsün */
+  title: string;
+  /** Karşıdakinin repliği ve kullanıcının cevabı, sırayla */
+  turns: Array<{ say: string; answer: string }>;
+  /** Öğretmene gönderildi mi */
+  syncState?: 'pending' | 'synced';
+}
+
 /** Claude Code'un önerdiği içerik — video, dizi bölümü, okuma, şarkı */
 export interface ContentSuggestion {
   type: 'youtube' | 'series' | 'reading' | 'song' | 'podcast' | 'task';
@@ -630,6 +643,16 @@ export interface AppData {
    * Tarih değişince kendiliğinden sıfırlanır: `date` bugün değilse pay yoktur.
    */
   extraWords?: { date: string; count: number };
+  /**
+   * **Yapılan canlandırmalar** — kullanıcının rol içinde yazdıkları.
+   *
+   * ⚠️ Bu alan sonradan eklendi ve eklenmeden önce gerçek bir hata vardı:
+   * canlandırma ekranı bitişte *"bir sonraki senkronda öğretmen cümlelerini
+   * görüp düzeltecek"* diyordu ama cevaplar **hiçbir yere kaydedilmiyordu**.
+   * Kullanıcı emek verip yazıyor, uygulama söz veriyor, veri sessizce
+   * kayboluyordu. Bağımsız denetim yakaladı.
+   */
+  scenarioRuns?: ScenarioRun[];
   /** Yapılmış sohbetlerin kaydı — öğretmene giden ham veri */
   conversations: ConversationRecord[];
   /** Hedef tarihinin gün gün geçmişi — "dün 80'di, bugün 78" grafiği */

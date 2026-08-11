@@ -38,6 +38,7 @@ import {
   applyInbox,
   markConversationsSynced,
   markLevelExamSynced,
+  markScenarioRunsSynced,
   markTasksSynced,
   setSync,
 } from '../db/mutations';
@@ -75,10 +76,19 @@ export function syncSignature(data: AppData): string {
     (c) => c.syncState === 'pending' && c.messages.some((m) => m.role === 'user')
   ).length;
   const tastes = data.profile.tastes;
+  /**
+   * ⚠️ Canlandırma imzaya **girmeli**. Girmezse cevaplar kaydediliyor ama
+   * gönderim tetiklenmiyor ve öğretmene ancak başka bir değişiklik olduğunda
+   * ulaşıyor — ekran "öğretmen görecek" derken bekleme belirsizleşiyordu.
+   */
+  const pendingScenarios = (data.scenarioRuns ?? []).filter(
+    (r) => r.syncState !== 'synced'
+  ).length;
 
   return [
     pendingTasks,
     pendingConversations,
+    pendingScenarios,
     data.profile.level,
     data.profile.levelScore ?? '',
     data.profile.levelChangedAt ?? '',
@@ -123,6 +133,8 @@ async function runSync(
       next = markTasksSynced(next, sentTaskIds);
       next = markConversationsSynced(next, sentConversationIds);
       if (sentExam) next = markLevelExamSynced(next);
+      /** Canlandırmalar gönderildi — bir daha gönderilmesin */
+      next = markScenarioRunsSynced(next);
       next = setSync(next, { lastPushAt: new Date().toISOString() });
     }
     if (!('error' in pulled) && pulled.inbox) {

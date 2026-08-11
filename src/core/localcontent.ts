@@ -35,6 +35,7 @@ import { A1_CATALOG } from './catalog/a1';
 import { A1_CESIT } from './catalog/a1-cesit';
 import { A1_MUZIK } from './catalog/a1-muzik';
 import { labelOf } from './tastes';
+import { dayNumber } from './reading';
 import { keysFromNote } from './tastematch';
 import { isTooHardFor, levelOfWord } from './wordbank';
 
@@ -550,12 +551,95 @@ function tasteScore(item: CatalogItem, weights: Map<string, number>): number {
  * Hiçbiri kullanıcının zevkine değmiyorsa (puan 0) tarafsız içeriklere düş —
  * onların gerekçesi bir zevk iddia etmiyor.
  */
+/**
+ * Aynı sanatçının parçalarını **sıraya yayar.**
+ *
+ * ⚠️ Ölçümde çıktı: sıra yürümeye başladıktan sonra bile aynı sanatçı ardışık
+ * iki güne düşebiliyordu — metal havuzunda iki Metallica parçası katalogda yan
+ * yana duruyordu. Kullanıcının şikâyeti şarkı adı değil **sanatçı** üzerineydi:
+ * *"yarın yine Bruno Mars'a gelmesin."* İki farklı Bruno Mars şarkısı da
+ * "yine Bruno Mars" demektir.
+ *
+ * Yöntem açgözlü: her adımda **en çok parçası kalan** sanatçıdan, bir önceki
+ * adımda kullanılandan farklı olmak kaydıyla bir parça alınıyor. Sonda
+ * sarmalı da kontrol ediliyor — liste her gün başa döndüğü için son ile ilk
+ * de komşudur; ilk sürüm bunu kaçırmıştı ve tur başında tekrar çıkıyordu.
+ */
+function sanatciyaGoreDagit(liste: CatalogItem[]): CatalogItem[] {
+  if (liste.length < 3) return liste;
+
+  /** "Katy Perry — Firework" → "katy perry" */
+  const sanatci = (item: CatalogItem) =>
+    item.title.split('—')[0].trim().toLowerCase();
+
+  const gruplar = new Map<string, CatalogItem[]>();
+  for (const item of liste) {
+    const k = sanatci(item);
+    const g = gruplar.get(k);
+    if (g) g.push(item);
+    else gruplar.set(k, [item]);
+  }
+  /** Her sanatçının tek parçası varsa dizilim zaten sorunsuz */
+  if (gruplar.size === liste.length) return liste;
+
+  const out: CatalogItem[] = [];
+  let onceki = '';
+  while (out.length < liste.length) {
+    const adaylar = [...gruplar.entries()]
+      .filter(([, g]) => g.length > 0)
+      .sort((a, b) => b[1].length - a[1].length);
+    /** Öncekinden farklı olan ilk aday; yoksa mecburen aynı sanatçı */
+    const secilen = adaylar.find(([ad]) => ad !== onceki) ?? adaylar[0];
+    if (!secilen) break;
+    out.push(secilen[1].shift()!);
+    onceki = secilen[0];
+  }
+
+  /** Sarmal: son ile ilk aynı sanatçıysa sondakini bir öne al */
+  if (out.length > 2 && sanatci(out[0]) === sanatci(out[out.length - 1])) {
+    for (let i = out.length - 2; i > 0; i--) {
+      if (sanatci(out[i]) !== sanatci(out[0])) {
+        const [tasinan] = out.splice(out.length - 1, 1);
+        out.splice(i, 0, tasinan);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 function pickBest(
   pool: CatalogItem[],
   keys: Map<string, number>,
-  seed: number
+  seed: number,
+  /**
+   * **Gün sırası — verildiğinde seçim rastgele değil, sırayla yürür.**
+   *
+   * ⚠️ Kullanıcının bildirimi: *"adam müziğe girdi, Bruno Mars geldi; yarın
+   * geldi yine Bruno Mars'a gelmesin, Katy Perry, X sanatçı."* Seçim
+   * `winners[seed % winners.length]` ile yapılıyordu; tohum tarihten
+   * türese de **ardışık iki günün aynı öğeye düşmesi tesadüfe kalmıştı** —
+   * 5 parçalık bir havuzda bunun olasılığı her gün 1/5.
+   *
+   * Gün sırası verildiğinde indeks her gün tam bir adım ilerliyor: aynı
+   * parça havuz turu tamamlanmadan geri gelmiyor. Kaydırma tohumdan
+   * geldiği için iki farklı kullanıcı aynı günde aynı sırayı görmüyor.
+   */
+  gunSirasi?: number
 ): CatalogItem | null {
   if (pool.length === 0) return null;
+
+  /**
+   * ⚠️ Sıra yürürken **tohum karışmamalı.** İlk sürümde indeks
+   * `(gunSirasi + seed) % n` idi; `seed` her gün değiştiği için toplam yine
+   * zar atmaya dönüyordu ve ölçümde 63 günün 148 kez ardışık tekrarı çıktı.
+   * Kaydırma çağıran tarafta **sabit** bir sayıdan geliyor (zevklerin
+   * kaydedilme anı), burada yalnızca gün sırası kullanılıyor.
+   */
+  const sec = (liste: CatalogItem[]) =>
+    gunSirasi === undefined
+      ? liste[seed % liste.length]
+      : sanatciyaGoreDagit(liste)[gunSirasi % liste.length];
 
   /**
    * Önce ağırlık toplamı; eşitlikte **çok geniş** etiketliyi ele.
@@ -580,7 +664,7 @@ function pickBest(
     const esitler = pool.filter((i) => tasteScore(i, keys) === en);
     const enDar = Math.min(...esitler.map((i) => i.tastes.length));
     const winners = esitler.filter((i) => i.tastes.length <= enDar + 2);
-    return winners[seed % winners.length];
+    return sec(winners);
   }
 
   /**
@@ -593,15 +677,15 @@ function pickBest(
    * yanlış seviye, yalan gerekçeden iyidir.
    */
   const neutral = pool.filter((i) => i.tastes.length === 0);
-  if (neutral.length > 0) return neutral[seed % neutral.length];
+  if (neutral.length > 0) return sec(neutral);
 
   const sameType = new Set(pool.map((i) => i.type));
   const anyNeutral = CATALOG.filter(
     (i) => i.tastes.length === 0 && sameType.has(i.type)
   );
-  if (anyNeutral.length > 0) return anyNeutral[seed % anyNeutral.length];
+  if (anyNeutral.length > 0) return sec(anyNeutral);
 
-  return pool[seed % pool.length];
+  return sec(pool);
 }
 
 /**
@@ -640,6 +724,34 @@ function poolFor(
 }
 
 /**
+ * **Zevke uyan içerik "bitirdim" yüzünden tükendiyse havuzu geri aç.**
+ *
+ * ⚠️ Bağımsız denetimin bulduğu hata, canlı olarak doğrulandı: kullanıcı
+ * seçtiği türün bütün şarkılarını "bitirdim" işaretlerse o türe **bir daha
+ * hiç** dönülmüyordu. Sebebi ince: `poolFor`'daki "hepsi bitmişse baştan
+ * başla" kuralı **bütün şarkı havuzu** üzerinden çalışıyor. Elektronik
+ * seçen birinin 4 elektronik parçası bitse bile katalogda 40 başka şarkı
+ * duruyor, dolayısıyla `fresh` boşalmıyor ve kural tetiklenmiyor. Sonra
+ * `pickBest` zevke uyan hiçbir şey bulamayıp tarafsız yedeğe düşüyor ve
+ * orada kalıyordu — üstelik *"Zevklerine tam uyan bir parça bulamadım"*
+ * diye **yalan bir gerekçeyle**; oysa kullanıcı türü seçmiş, sadece hepsini
+ * bitirmiş.
+ *
+ * Kural artık zevk bazında: elenmemiş havuzda zevke değen hiçbir şey
+ * kalmadıysa ama tam havuzda varsa, o türün parçaları yeniden dolaşıma
+ * giriyor. Tekrar dinlemek, alakasız bir parça dinlemekten iyidir.
+ */
+function tasteAwarePool(
+  filtreli: CatalogItem[],
+  tam: CatalogItem[],
+  keys: Map<string, number>
+): CatalogItem[] {
+  const deger = (liste: CatalogItem[]) =>
+    liste.some((i) => tasteScore(i, keys) > 0);
+  return !deger(filtreli) && deger(tam) ? tam : filtreli;
+}
+
+/**
  * Bugünün yerel içerik önerileri.
  *
  * Bir izleme (dizi/video) + bir dinleme (şarkı). Gün numarası tohum olduğu
@@ -672,9 +784,28 @@ export function pickLocalContent(
   const seed = daySeed(date + (tastes?.updatedAt ?? ''));
   const done = new Set(doneTitles);
 
+  /**
+   * Gün sırası: her ikisi de günden güne **yürüyor**, zar atmıyor. İzleme ve
+   * dinleme farklı kaydırmalarla gidiyor ki ikisi aynı anda başa dönmesin.
+   */
+  const gun = dayNumber(new Date(date + 'T12:00:00'));
+  /**
+   * Sabit kaydırma: iki farklı kullanıcı aynı günde aynı sırayı görmesin,
+   * ama sıra **gün içinde ve günden güne kaymasın**. Zevkler kaydedildiğinde
+   * değişiyor — kullanıcının "girip çıkınca başka şey gelsin" isteği.
+   */
+  const kaydirma = daySeed(tastes?.updatedAt ?? 'x');
+  const bos = new Set<string>();
   const picks = [
-    pickBest(poolFor(level, 'watch', done), keys, seed),
-    pickBest(poolFor(level, 'song', done), keys, seed),
+    pickBest(
+      tasteAwarePool(poolFor(level, 'watch', done), poolFor(level, 'watch', bos), keys),
+      keys, seed, gun + kaydirma
+    ),
+    /** İzleme ve dinleme farklı noktadan başlasın, ikisi birlikte dönmesin */
+    pickBest(
+      tasteAwarePool(poolFor(level, 'song', done), poolFor(level, 'song', bos), keys),
+      keys, seed, gun + kaydirma + 3
+    ),
   ].filter((i): i is CatalogItem => i !== null);
 
   /**

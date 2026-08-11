@@ -193,6 +193,18 @@ export interface OutboxPayload {
     activeStep?: { id: string; title: string; goal: string; days: number };
     steps: Array<{ id: string; title: string; days: number; status: string }>;
   };
+  /**
+   * Yapılan **canlandırmalar** — rol içinde yazılan cümleler.
+   *
+   * Günün sohbetinden ayrı bir iş: sohbet bir içerik üzerine konuşturur,
+   * canlandırma bir durumun içine sokar (restoranda sipariş, otele giriş).
+   * Öğretmen bunları da düzeltmeli — ekran kullanıcıya bunu söz veriyor.
+   */
+  scenarios?: Array<{
+    date: string;
+    title: string;
+    turns: Array<{ say: string; answer: string }>;
+  }>;
   /** Öğretmenin mevcut planı — varsa üzerine karar verir */
   currentPlan?: TeacherPlan;
 }
@@ -473,6 +485,10 @@ export function buildOutbox(data: AppData): OutboxPayload {
         level: p.level,
         daysRemaining: p.daysRemaining,
       })),
+    scenarios: (data.scenarioRuns ?? [])
+      .filter((r) => r.syncState !== 'synced')
+      .slice(-5)
+      .map((r) => ({ date: r.date, title: r.title, turns: r.turns })),
     wordPool: buildWordPoolReport(data),
     curriculum: buildCurriculumReport(data),
     currentPlan: data.plan,

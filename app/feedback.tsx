@@ -30,9 +30,9 @@ export default function FeedbackScreen() {
       <View style={[styles.screen, styles.centered]}>
         <Text style={styles.emptyTitle}>Henüz düzeltme yok</Text>
         <Text style={styles.emptyText}>
-          Bir yazma görevi yap, sonra Ayarlar → Şimdi senkronla de. Bilgisayarda{' '}
-          <Text style={styles.bold}>/ogretmen</Text> komutunu çalıştırınca
-          düzeltmen buraya gelecek.
+          Bir yazma görevi yap — gönderme işini uygulama kendisi yapıyor.
+          Bilgisayardaki nöbetçi öğretmeni çalıştırınca düzeltmen buraya
+          gelecek.
         </Text>
       </View>
     );
