@@ -457,8 +457,20 @@ export function targetLevelFor(data: AppData): string {
   const above = nextLevel(current);
   if (!above) return current;
 
-  const planned = data.plan?.targetLevel;
-  if (planned && levelIndex(planned) > levelIndex(current)) return planned;
+  /**
+   * ⚠️ **Plandaki hedefe bakılmıyor — her zaman tam bir basamak üstü.**
+   *
+   * Eskiden `plan.targetLevel` mevcut seviyeden yüksekse o kazanıyordu ve
+   * eskimiş bir plan ekranda **"A1 → B2"** yazdırıyordu: kullanıcı B1'deyken
+   * yazılmış plan B2 diyordu, sonra seviye A1'e indi ama hedef B2 kaldı.
+   * Gün sayısı bu arada A2'ye göre hesaplanıyordu — yani rozet bir şey,
+   * sayı başka bir şey söylüyordu.
+   *
+   * `sanitizePlan` zaten `targetLevel`'ı bir üst basamağa kırpıyor; buradaki
+   * ikinci okuma sadece eskimiş veriyi geri getiriyordu. Kullanıcının kuralı
+   * da net: *"A2'ye hedef B1, A1'se A2, B1'se B2 — her çektiğimde dinamik
+   * olması lazım."*
+   */
   return above;
 }
 

@@ -19,7 +19,7 @@ import {
   placeByScore,
 } from '../src/core/curriculum.ts';
 import { LEVEL_SPEC } from '../src/core/level.ts';
-import { estimateTarget, weeklyActiveDays } from '../src/core/progress.ts';
+import { estimateTarget, targetLevelFor, weeklyActiveDays } from '../src/core/progress.ts';
 import { WORD_BANK } from '../src/core/words/index.ts';
 
 let hata = 0;
@@ -180,6 +180,25 @@ bekle(
     tempoTahmin?.curriculum?.lessonDaysLeft ?? 0,
     weeklyActiveDays(tempoVeri, BUGUN)
   )
+);
+
+/**
+ * ⚠️ Rozet ile sayı aynı seviyeyi göstermeli.
+ *
+ * Canlı testte yakalandı: ekranda **"A1 → B2, 82 gün"** yazıyordu. Gün sayısı
+ * A2'ye göre hesaplanmış, rozet ise eskimiş plandan gelen B2'yi gösteriyordu.
+ * İki ayrı kaynak aynı soruya iki cevap veriyordu.
+ */
+const eskimisPlan = {
+  targetLevel: 'B2', remainingHours: 150, dailyNewWords: 4, dailyMinutes: 10,
+  focus: [], note: '', updatedAt: '2026-08-01T00:00:00Z',
+};
+const eskimisVeri = veri('A1', gunler, eskimisPlan);
+bekle('rozet eskimiş plandan etkilenmiyor', targetLevelFor(eskimisVeri), 'A2');
+bekle(
+  'rozet ile tahmin aynı seviyeyi gösteriyor',
+  targetLevelFor(eskimisVeri),
+  estimateTarget(eskimisVeri, BUGUN)?.level
 );
 
 console.log(`\n${hata === 0 ? 'HEPSİ GEÇTİ' : hata + ' HATA'}`);
