@@ -298,6 +298,21 @@ export function calendarDaysFor(
   return Math.ceil((remainingLessonDays * 7) / gun);
 }
 
+/**
+ * **Bir seviye için gösterilebilecek en uzun süre.**
+ *
+ * ⚠️ Bağımsız denetim (2026-08-11) yeni modelin de tavansız olduğunu buldu:
+ * öğretmen 175 ders günlük bir müfredat gönderir ve kullanıcı haftada 2 gün
+ * çalışırsa **613 gün**, haftada 1 gün çalışırsa **1225 gün** çıkıyor. Yani
+ * kullanıcının şikâyet ettiği sayı (760) kaynağı değişmiş hâlde geri geliyor.
+ *
+ * Bir seviyeyi bir yıldan uzun sürede geçmeyi planlamak bir plan değil, bir
+ * caydırıcıdır. Ama sayıyı kısaltıp doğruymuş gibi göstermek de yalan olur —
+ * bu yüzden tavana dayanınca **sayı kırpılır ve kırpıldığı söylenir**:
+ * "bu tempoyla uzak, haftada şu kadar çalışırsan şu kadar."
+ */
+export const MAX_DAYS = 365;
+
 /** Bir sonraki seviye — müfredat bitince nereye geçilecek */
 export function levelAfter(level: string): CEFRLevel | null {
   const i = levelIndex(level);

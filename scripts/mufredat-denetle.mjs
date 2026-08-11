@@ -17,6 +17,7 @@ import {
   calendarDaysFor,
   curriculumProgress,
   placeByScore,
+  MAX_DAYS,
 } from '../src/core/curriculum.ts';
 import { LEVEL_SPEC } from '../src/core/level.ts';
 import { estimateTarget, targetLevelFor, weeklyActiveDays } from '../src/core/progress.ts';
@@ -200,6 +201,50 @@ bekle(
   targetLevelFor(eskimisVeri),
   estimateTarget(eskimisVeri, BUGUN)?.level
 );
+
+/* ------------------------------------------------ 6. tavan ve geri sızma */
+
+console.log('\n— Tavan (bağımsız denetimin bulduğu iki açık) —');
+
+/**
+ * ⚠️ Yeni model de tavansızdı: 175 ders günlük müfredat + haftada 2 gün tempo
+ * **613 gün**, haftada 1 gün **1225 gün** veriyordu. Kullanıcının şikâyet
+ * ettiği sayı kaynağı değişmiş hâlde geri geliyordu.
+ */
+const kocamanMufredat = {
+  level: 'A1',
+  steps: Array.from({ length: 25 }, (_, i) => ({
+    id: `a1-${i + 1}`,
+    title: `Basamak ${i + 1}`,
+    goal: 'Bir şey öğreniyorsun.',
+    days: 7,
+    status: 'todo',
+  })),
+};
+const yavasGunler = [];
+for (let i = 0; i < 28; i++) if (i % 7 < 2) yavasGunler.push(iso(i));
+const yavasVeri = veri('A1', yavasGunler, {
+  targetLevel: 'A2', remainingHours: 200, dailyNewWords: 4, dailyMinutes: 10,
+  focus: [], note: '', updatedAt: '2026-08-11T00:00:00Z', curriculum: kocamanMufredat,
+});
+const yavasTahmin = estimateTarget(yavasVeri, BUGUN);
+bekle('en büyük müfredat + en yavaş tempo tavanı aşmıyor', yavasTahmin?.daysRemaining <= MAX_DAYS, true);
+bekle('tavana dayanınca yol gösteriyor', /haftada 5 gün/.test(yavasTahmin?.note ?? ''), true);
+console.log(`    not: ${yavasTahmin?.note}`);
+
+/**
+ * ⚠️ Müfredat yalnızca A1 için varsayılan; A2 ve üstünde öğretmen müfredat
+ * göndermemişse eski saat modeline düşülüyordu ve orada tavan **540**'tı.
+ * Kullanıcı yine şikâyet ettiği sayıyı görüyordu.
+ */
+const a2Veri = veri('A2', gunler, {
+  targetLevel: 'B1', remainingHours: 400, dailyNewWords: 5, dailyMinutes: 10,
+  focus: [], note: '', updatedAt: '2026-08-11T00:00:00Z',
+});
+const a2Tahmin = estimateTarget(a2Veri, BUGUN);
+bekle('A2de müfredat yokken tavan 540 değil', a2Tahmin?.daysRemaining <= MAX_DAYS, true);
+bekle('A2de müfredatın eksik olduğu söyleniyor', /müfredatını kurduğunda/.test(a2Tahmin?.note ?? ''), true);
+console.log(`    A2 gün: ${a2Tahmin?.daysRemaining} · not: ${a2Tahmin?.note}`);
 
 console.log(`\n${hata === 0 ? 'HEPSİ GEÇTİ' : hata + ' HATA'}`);
 process.exit(hata ? 1 : 0);

@@ -15,6 +15,7 @@ import {
   activeCurriculum,
   calendarDaysFor,
   curriculumProgress,
+  MAX_DAYS,
 } from './curriculum';
 import { levelIndex, nextLevel, toLevel } from './level';
 import { addDays, toISODate } from './srs';
@@ -224,8 +225,15 @@ function curriculumTarget(
    */
   const kullanilan = olculdu ? haftalikGun : 5;
 
-  let daysRemaining = calendarDaysFor(ilerleme.remainingLessonDays, kullanilan);
-  if (daysRemaining <= 0) daysRemaining = 1;
+  const ham = calendarDaysFor(ilerleme.remainingLessonDays, kullanilan);
+  /**
+   * ⚠️ Tavan burada da gerekli. Bağımsız denetim ölçtü: 175 ders günlük bir
+   * müfredat + haftada 2 gün tempo = **613 gün**, haftada 1 gün = **1225
+   * gün**. Kullanıcının şikâyet ettiği sayı kaynağı değişmiş hâlde geri
+   * geliyordu.
+   */
+  const kirpildi = ham > MAX_DAYS;
+  let daysRemaining = Math.max(1, Math.min(MAX_DAYS, ham));
 
   /** Ani sıçramayı yumuşat — hedef her gün zıplarsa anlamını yitirir */
   if (previousDaysRemaining !== undefined && previousDaysRemaining > 0) {
@@ -243,9 +251,17 @@ function curriculumTarget(
     aktifGun >= 14 ? 'high' : aktifGun >= 5 ? 'medium' : 'low';
 
   const basamak = ilerleme.step;
-  const note = !olculdu
-    ? `Müfredatta ${ilerleme.remainingLessonDays} ders günü kaldı. Bu tahmin haftada 5 gün çalışmaya göre; sen çalıştıkça kendi tempona göre yeniden hesaplanacak.`
-    : `Müfredatta ${ilerleme.remainingLessonDays} ders günü kaldı ve haftada ${haftalikGun.toFixed(1)} gün çalışıyorsun. Her gün çalışırsan ${ilerleme.remainingLessonDays} günde biter.`;
+  /**
+   * Tavana dayandıysak sayıyı süsleme — **gerçeği söyle ve yolu göster.**
+   * Kırpılmış bir sayıyı olduğu gibi sunmak kullanıcıyı kandırmak olur; ama
+   * 1200 gün yazmak da işe yaramaz. Doğrusu: "bu tempoyla uzak, şu tempoyla
+   * şu kadar."
+   */
+  const note = kirpildi
+    ? `Bu tempoyla hedef çok uzak. Müfredatta ${ilerleme.remainingLessonDays} ders günü var; haftada 5 gün çalışırsan ${calendarDaysFor(ilerleme.remainingLessonDays, 5)} günde biter, her gün çalışırsan ${ilerleme.remainingLessonDays} günde.`
+    : !olculdu
+      ? `Müfredatta ${ilerleme.remainingLessonDays} ders günü kaldı. Bu tahmin haftada 5 gün çalışmaya göre; sen çalıştıkça kendi tempona göre yeniden hesaplanacak.`
+      : `Müfredatta ${ilerleme.remainingLessonDays} ders günü kaldı ve haftada ${haftalikGun.toFixed(1)} gün çalışıyorsun. Her gün çalışırsan ${ilerleme.remainingLessonDays} günde biter.`;
 
   return {
     level: hedef,
@@ -395,9 +411,17 @@ export function estimateTarget(
    * inandırıcı kalsın.
    */
   const rawDays = Math.ceil(weeksNeeded * 7);
-  let daysRemaining = Math.min(540, Math.max(7, rawDays));
+  /**
+   * ⚠️ Tavan 540'tan **365'e** indirildi ve müfredat yoluyla aynı sayı oldu.
+   *
+   * Bağımsız denetim (2026-08-11) bu yolun hâlâ 540 ürettiğini gösterdi:
+   * müfredat yalnızca A1 için varsayılan olarak tanımlı, A2 ve üstünde
+   * öğretmen müfredat göndermemişse buraya düşülüyor ve kullanıcı yine
+   * şikâyet ettiği sayıyı görüyordu. Bir seviye için 1.5 yıl bir plan değil.
+   */
+  let daysRemaining = Math.min(MAX_DAYS, Math.max(7, rawDays));
   /** Tavana dayandıysak sayı gerçeği değil, sınırı gösteriyor — söylenmeli */
-  const capped = rawDays > 540;
+  const capped = rawDays > MAX_DAYS;
 
   // Ani sıçramaları yumuşat — abartılı tahmin yapma
   if (previousDaysRemaining !== undefined && previousDaysRemaining > 0) {
@@ -422,8 +446,15 @@ export function estimateTarget(
    * dedi, "iyimser görünsün" demedi.
    */
   const neededWeekly = Math.ceil((plan.remainingHours * 60) / 26); // 26 hafta ≈ 6 ay
+  /**
+   * Buraya düşmüş olmak, **bu seviyenin müfredatı henüz kurulmamış** demektir
+   * (varsayılan merdiven şimdilik yalnızca A1'de var, üst seviyeler fazları
+   * gelince eklenecek). Tahmin saat modelinden geliyor; kullanıcı sayının
+   * neden kaba olduğunu bilsin.
+   */
+  const mufredatYok = ' Öğretmen bu seviyenin müfredatını kurduğunda gün sayısı ders gününe göre yeniden hesaplanacak.';
   const note = capped
-    ? `Bu tempoyla hedef çok uzak. Altı ayda ulaşmak için haftada ~${neededWeekly} dakika gerekiyor; şu an ${Math.round(blended)} dakika.`
+    ? `Bu tempoyla hedef çok uzak. Altı ayda ulaşmak için haftada ~${neededWeekly} dakika gerekiyor; şu an ${Math.round(blended)} dakika.` + mufredatYok
     : confidence === 'low'
       ? 'Henüz az veri var — bu tahmin birkaç hafta içinde netleşecek.'
       : weeklyMinutes === 0
