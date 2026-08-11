@@ -148,6 +148,30 @@ export function checkWritten(
  * eşleşmeye hem de **metnin içinde geçmesine** bakılıyor ve tolerans bir tık
  * geniş tutuluyor. Amaç telaffuzu ölçmek, tanıma motorunu sınamak değil.
  */
+/**
+ * Motorun **bütün tahminlerine** bakar, en iyi sonucu döndürür.
+ *
+ * ⚠️ Neden gerekti: tanıma motoru `en-US` için eğitilmiş ve Türk aksanında
+ * ilk tahmini sık sık kaçırıyor ("work" → "walk"), ama doğru kelime çoğu
+ * zaman ikinci-üçüncü adayda duruyordu. Tek adaya bakmak, **doğru söyleyen
+ * kullanıcıya yanlış demek** anlamına geliyordu — şikâyetin kaynağı buydu.
+ *
+ * Bu bir telaffuz **puanı** değildir; motorun kelimeyi tanıyıp tanımadığıdır.
+ * Bkz. `answerCard`: 3. aşama artık kartı geri düşürmüyor.
+ */
+export function checkSpokenAny(
+  transcripts: string[],
+  card: CheckableCard
+): AnswerVerdict {
+  let best: AnswerVerdict = 'wrong';
+  for (const t of transcripts) {
+    const verdict = checkSpoken(t, card);
+    if (verdict === 'correct') return 'correct';
+    if (verdict === 'close') best = 'close';
+  }
+  return best;
+}
+
 export function checkSpoken(transcript: string, card: CheckableCard): AnswerVerdict {
   const heard = normalizeAnswer(transcript);
   if (!heard) return 'wrong';
@@ -174,6 +198,21 @@ function escapeRegExp(text: string): string {
  * `close` (ufak hata) aşamayı ilerletmez — kelime henüz tam oturmamıştır.
  */
 export function nextStage(current: CardStage, verdict: AnswerVerdict): CardStage {
+  /**
+   * ⚠️ **3. aşama (telaffuz) kartı geri düşürmez.**
+   *
+   * Telaffuz basamağı bir sınav değil, "dinle ve tekrar et" pratiğidir.
+   * Ölçen şey tarayıcının konuşma tanıması ve o bir **yazıcı**, telaffuz
+   * puanlayıcısı değil: ne kadar iyi söylediğine değil, ne dediğini
+   * anladığına bakıyor. Aksana takılıp yanılıyor.
+   *
+   * Eskiden yanlış duyulan her kelime yazma basamağına geri düşüyor ve aynı
+   * gün tekrar tekrar karşına çıkıyordu; kullanıcılar bunu *"algılamıyor,
+   * döngüde kalıyorum"* diye bildirdi. Motorun kararı artık kartın
+   * kaderini belirlemiyor — sadece ekrandaki mesajı ve öğretmene giden
+   * bilgiyi değiştiriyor.
+   */
+  if (current === 3) return 3;
   if (verdict === 'correct') return Math.min(3, current + 1) as CardStage;
   if (verdict === 'close') return current;
   return Math.max(1, current - 1) as CardStage;

@@ -146,8 +146,17 @@ export interface Card {
    * en uzun süredir cevaplanmayan kart öne gelir, aynı kart üst üste çıkmaz.
    */
   lastAnsweredAt?: string;
-  /** Telaffuz aşaması ilk kez geçildiğinde damgalanır, 'YYYY-MM-DD' */
+  /**
+   * Tanıma motoru kelimeyi gerçekten duyduğunda damgalanır, 'YYYY-MM-DD'.
+   * **Telaffuz kalitesi değil**, motorun tanıyıp tanımadığıdır.
+   */
   spokenOkAt?: string;
+  /**
+   * Kullanıcı telaffuz basamağını **denedi** (tanınsın tanınmasın).
+   * Motor aksana takılıp yanılabildiği için basamağı bitiren şey budur;
+   * `spokenOkAt` ise öğretmene "motor da duydu" bilgisini taşır.
+   */
+  spokenTriedAt?: string;
 }
 
 export interface ErrorCategory {
@@ -194,6 +203,14 @@ export interface TaskRecord {
   syncState: 'pending' | 'synced';
   /** Kullanıcı düzeltmeyi okudu mu — okunduktan sonra ana ekrandaki kart kaybolur */
   feedbackSeen?: boolean;
+  /**
+   * Cevap **mikrofonla** verildi mi (konuşma tanıma metne çevirdi).
+   *
+   * Öğretmen bunu görünce yazım/noktalama/büyük harf üzerinden hata
+   * çıkarmaz: o hatalar kullanıcının değil, tanıma motorunun. Bkz.
+   * `ogretmen.md` §3.6.
+   */
+  viaSpeech?: boolean;
   createdAt: string;
 }
 

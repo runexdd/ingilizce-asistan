@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import {
   buildOptions,
-  checkSpoken,
+  checkSpokenAny,
   checkWritten,
   directionFor,
   STAGE_HINTS,
@@ -651,23 +651,30 @@ function SpeakStage({
     setHeard('');
     setRecording(true);
     const handle = startSpeechInput({
-      onFinal: (chunk) => {
+      onFinal: (chunk, alternatives) => {
         if (!chunk) return;
         setHeard(chunk);
         micRef.current?.stop();
-        const result = checkSpoken(chunk, card);
+        /** Motorun bütün tahminlerine bak — ilk tahmin aksanda sık kayıyor */
+        const result = checkSpokenAny(alternatives.length ? alternatives : [chunk], card);
         setVerdict(result);
+        /**
+         * Tanınmasa bile basamak biter (bkz. `nextStage`, `answerCard`):
+         * motor bir telaffuz puanlayıcısı değil, kullanıcıyı onun kararıyla
+         * döngüde bırakmak yanlıştı. Mesaj dürüst: "duyamadım" diyoruz,
+         * "yanlış söyledin" demiyoruz.
+         */
         setTimeout(
           () =>
             onAnswer(
               result,
               result === 'correct'
-                ? `"${card.word}" telaffuzu tamam — öğrenildi sayılıyor`
+                ? `"${card.word}" — tanındı, öğrenildi sayılıyor`
                 : result === 'close'
-                  ? `"${card.word}" — neredeyse, bir kez daha dinle`
-                  : `"${card.word}" — tekrar deneyelim`
+                  ? `"${card.word}" — yakın duyuldu, tamamlandı`
+                  : `"${card.word}" — net duyulamadı ama tekrar ettin, sayıldı`
             ),
-          result === 'wrong' ? 1800 : 900
+          result === 'wrong' ? 2000 : 900
         );
       },
       onInterim: setHeard,
@@ -717,16 +724,20 @@ function SpeakStage({
           </Text>
 
           {verdict === 'close' && (
-            <Text style={styles.closeNote}>
-              Yakın — bir kez daha dinleyip tekrar et.
+            <Text style={styles.closeNote}>Yakın duyuldu — tamamlandı.</Text>
+          )}
+          {/* Tanıma tutmadığında kullanıcıyı suçlamıyoruz: motor gerçekten
+              aksana takılıyor ve bunu söylemek, sessizce "yanlış" demekten
+              hem daha dürüst hem daha az yıldırıcı. */}
+          {verdict === 'wrong' && (
+            <Text style={styles.micHonest}>
+              {heard ? `Duyduğum: “${heard}”. ` : ''}Net duyamadım — bu
+              telaffuzunun kötü olduğu anlamına gelmez. Tanıma motoru
+              anadili İngilizce olanlara göre ayarlı, aksana sık takılıyor.
+              Kelimeyi bir kez daha dinleyip kendi kulağınla karşılaştır.
             </Text>
           )}
-          {verdict === 'wrong' && heard && (
-            <Text style={styles.wrongNote}>
-              Duyduğum: “{heard}” · beklenen: <Text style={styles.bold}>{card.word}</Text>
-            </Text>
-          )}
-          {micError && <Text style={styles.wrongNote}>{micError}</Text>}
+          {micError && <Text style={styles.micHonest}>{micError}</Text>}
         </>
       ) : (
         <>
@@ -921,6 +932,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
     lineHeight: 20,
+  },
+  /**
+   * Tanıma tutmadığında kullanılan ton: kırmızı DEĞİL.
+   * Kullanıcı bir şey yanlış yapmadı; alet duyamadı.
+   */
+  micHonest: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    lineHeight: 19,
   },
 
   button: {

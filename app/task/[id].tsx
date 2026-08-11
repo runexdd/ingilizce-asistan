@@ -499,6 +499,12 @@ function SpeakingTask() {
   const [micError, setMicError] = useState<string | null>(null);
   const micRef = useRef<SpeechInputHandle | null>(null);
   const micSupported = useMemo(() => isSpeechInputSupported(), []);
+  /**
+   * Cevabın bir kısmı bile mikrofondan geldiyse metin **dikte**dir.
+   * Kullanıcı sonradan elle düzeltse de bayrak kalır: öğretmenin yazımı
+   * eleştirmemesi için bu yeterli, tersi (dikteyi yazı sanmak) zararlı.
+   */
+  const usedMic = useRef(false);
 
   const level = data.profile.level;
   const spec = specOf(level, activeSizing(data));
@@ -558,6 +564,8 @@ function SpeakingTask() {
     const handle = startSpeechInput({
       onFinal: (chunk) => {
         if (!chunk) return;
+        /** Cevabın mikrofondan geldiğini işaretle — öğretmen bunu bilmeli */
+        usedMic.current = true;
         setText((current) => (current ? `${current.trim()} ${chunk}` : chunk));
         setInterim('');
       },
@@ -586,6 +594,12 @@ function SpeakingTask() {
         kind: 'speaking',
         prompt,
         userResponse: response,
+        /**
+         * ⚠️ Bu bayrak olmadan öğretmen, tanıma motorunun duyduğu şeyi
+         * kullanıcının cümlesi sanıp düzeltiyor ve olmayan hataları hata
+         * veritabanına yazıyordu (bir test kullanıcısında 173 sahte hata).
+         */
+        viaSpeech: usedMic.current,
       });
       return recordSession(withTask, 5);
     });

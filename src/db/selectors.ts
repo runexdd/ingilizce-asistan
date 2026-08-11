@@ -178,8 +178,16 @@ export interface WordProgress {
   word: string;
   /** 1 tanıma · 2 yazma · 3 telaffuz */
   stage: number;
-  /** Telaffuz aşamasını geçti mi */
+  /**
+   * Tanıma motoru kelimeyi duydu mu.
+   *
+   * ⚠️ Bu **telaffuz kalitesi değil.** Tarayıcının konuşma tanıması bir
+   * yazıcıdır, telaffuz puanlayıcısı değil; Türk aksanında sık yanılıyor.
+   * `false` görmek "kötü telaffuz etti" demek DEĞİL — bkz. `spokenTried`.
+   */
   spoken: boolean;
+  /** Kullanıcı sesli tekrar etti mi (motor tanısın tanımasın) */
+  spokenTried: boolean;
   lastResult?: 'correct' | 'close' | 'wrong';
   /** Bugün hiç çalışıldı mı */
   studiedToday: boolean;
@@ -200,6 +208,7 @@ export function getTodayWordProgress(
       word: target.word,
       stage: card?.stage ?? 1,
       spoken: !!card?.spokenOkAt,
+      spokenTried: !!card?.spokenTriedAt,
       lastResult: card?.lastResult,
       studiedToday: card?.lastReviewedAt === iso,
     };

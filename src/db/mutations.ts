@@ -442,7 +442,19 @@ export function answerCard(
        * geçildiğinde** işliyor; ara basamaklarda kart bugüne ait kalıyor ve
        * kuyruğun sonuna gidiyor.
        */
-      const graduated = current === 3 && verdict === 'correct';
+      /**
+       * ⚠️ Eskiden yalnızca `verdict === 'correct'` ise mezun oluyordu, yani
+       * **tanıma motoru kelimeyi duyana kadar** kart bugünün kuyruğunda
+       * dönüyordu. Motor Türk aksanını sık sık kaçırdığı için kullanıcılar
+       * aynı kelimeye saplanıp kalıyordu.
+       *
+       * Telaffuz artık bir kapı değil, pratik: **denendiyse basamak biter.**
+       * Motorun kelimeyi tanıyıp tanımadığı bilgisi kaybolmuyor —
+       * `spokenOkAt` yalnızca gerçekten eşleştiğinde damgalanıyor ve
+       * öğretmen `wordProgress.spoken` ile bunu görüyor. Karar öğretmenin.
+       */
+      const graduated = current === 3;
+      const spokenMatched = verdict === 'correct';
 
       if (!graduated) {
         return {
@@ -470,7 +482,10 @@ export function answerCard(
         lastReviewedAt: iso,
         lastAnsweredAt: now,
         introducedAt: card.introducedAt ?? iso,
-        spokenOkAt: card.spokenOkAt ?? iso,
+        /** Yalnızca motor kelimeyi gerçekten tanıdıysa "telaffuzu tamam" */
+        spokenOkAt: card.spokenOkAt ?? (spokenMatched ? iso : undefined),
+        /** Denendi — tanınmasa bile kullanıcı sesli tekrar etti */
+        spokenTriedAt: card.spokenTriedAt ?? iso,
       };
     }),
   };
@@ -533,7 +548,21 @@ export function recordError(
 
 export function saveTaskResponse(
   data: AppData,
-  params: { kind: string; prompt: string; userResponse: string },
+  params: {
+    kind: string;
+    prompt: string;
+    userResponse: string;
+    /**
+     * Metin mikrofondan mı geldi.
+     *
+     * ⚠️ Bu bayrak olmadan öğretmen, tanıma motorunun uydurduğu cümleyi
+     * kullanıcı yazmış gibi okuyup tek tek düzeltiyordu; düzeltmeler
+     * `recordError` ile hata veritabanına giriyor ve **sonraki dersler o
+     * hatalardan kuruluyordu.** Bir test kullanıcısında hiç yapmadığı 173
+     * hata birikmişti. Öğretmen artık dikte metnini biliyor.
+     */
+    viaSpeech?: boolean;
+  },
   today: Date = new Date()
 ): AppData {
   const iso = toISODate(today);
@@ -543,6 +572,7 @@ export function saveTaskResponse(
     kind: params.kind,
     prompt: params.prompt,
     userResponse: params.userResponse,
+    viaSpeech: params.viaSpeech || undefined,
     feedback: null,
     status: 'submitted',
     syncState: 'pending',

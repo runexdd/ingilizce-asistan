@@ -25,7 +25,7 @@ import { Platform } from 'react-native';
 interface RecognitionEvent {
   resultIndex: number;
   results: ArrayLike<
-    ArrayLike<{ transcript: string }> & { isFinal: boolean }
+    ArrayLike<{ transcript: string }> & { isFinal: boolean; length: number }
   >;
 }
 
@@ -82,8 +82,16 @@ export function describeSpeechError(error: SpeechInputError): string {
 }
 
 export interface SpeechInputOptions {
-  /** Kesinleşmiş metin — mevcut yazının sonuna eklenir */
-  onFinal: (text: string) => void;
+  /**
+   * Kesinleşmiş metin — mevcut yazının sonuna eklenir.
+   *
+   * `alternatives`, motorun aynı ses için ürettiği **diğer tahminler** (en
+   * iyisi başta, `text` ile aynı). Aksanlı konuşmada motorun ilk tahmini
+   * sık sık kayıyor ama doğru kelime ikinci-üçüncü sırada duruyor; kelime
+   * eşlemesi yapan taraf hepsine bakmalı. Serbest metin yazdıran yerler
+   * (konuşma görevi) yalnızca `text`i kullanır.
+   */
+  onFinal: (text: string, alternatives: string[]) => void;
   /** Konuşurken anlık görünen taslak metin */
   onInterim?: (text: string) => void;
   onError?: (error: SpeechInputError) => void;
@@ -117,15 +125,30 @@ export function startSpeechInput(options: SpeechInputOptions): SpeechInputHandle
     r.lang = 'en-US';
     r.continuous = true;
     r.interimResults = true;
-    r.maxAlternatives = 1;
+    /**
+     * ⚠️ Burası 1'di ve motorun **tek tahmin hakkı** vardı.
+     *
+     * Motor `en-US` için eğitilmiş; Türk aksanlı bir A1 öğrencisi "work"
+     * derken ilk tahmin "walk" çıkabiliyor. Tek tahminle çalışınca doğru
+     * telaffuz "yanlış" sayılıyordu — kullanıcıların *"algılamıyor"*
+     * şikâyetinin büyük kısmı bu. Motor zaten birkaç aday üretiyor;
+     * istemek bedava, listeyi eşleştiren tarafa veriyoruz.
+     */
+    r.maxAlternatives = 5;
 
     r.onresult = (event) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0]?.transcript ?? '';
-        if (result.isFinal) options.onFinal(text.trim());
-        else interim += text;
+        if (result.isFinal) {
+          const alternatives: string[] = [];
+          for (let k = 0; k < result.length; k++) {
+            const t = result[k]?.transcript?.trim();
+            if (t) alternatives.push(t);
+          }
+          options.onFinal(text.trim(), alternatives);
+        } else interim += text;
       }
       if (interim) options.onInterim?.(interim.trim());
     };

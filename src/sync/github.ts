@@ -54,6 +54,14 @@ export interface OutboxTask {
   prompt: string;
   userResponse: string;
   date: string;
+  /**
+   * Cevap **mikrofonla** verildi mi — metni konuşma tanıma yazdı.
+   *
+   * ⚠️ Öğretmen bunu görmeden yazımı eleştirdiği için hiç yapılmamış
+   * hatalar veritabanına giriyordu (bir test kullanıcısında 173 tane) ve
+   * sonraki dersler o hatalardan kuruluyordu. `ogretmen.md` §3.6.
+   */
+  viaSpeech?: boolean;
 }
 
 /** Yapılmış bir sohbetin öğretmene giden hâli */
@@ -446,6 +454,7 @@ export function buildOutbox(data: AppData): OutboxPayload {
       prompt: t.prompt,
       userResponse: t.userResponse,
       date: t.date,
+      viaSpeech: t.viaSpeech || undefined,
     })),
     // Cevaplanmamış sorular her pakette gider — öğretmen bir turu kaçırırsa kaybolmasın
     questions: (data.teacherQuestions ?? [])

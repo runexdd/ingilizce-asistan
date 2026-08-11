@@ -114,13 +114,22 @@ Kartlar üç aşamadan geçiyor: **1 tanıma** (şıklardan anlamı seç) → **
 eder, ses karşılaştırılır). Her kelime için gelen alanlar:
 
 ```json
-{ "word": "notice", "stage": 3, "spoken": true,
+{ "word": "notice", "stage": 3, "spoken": true, "spokenTried": true,
   "lastResult": "correct", "studiedToday": true }
 ```
 
 - `stage` — kelimenin bulunduğu basamak. 3'e çıkmışsa yazabiliyor demektir.
-- `spoken` — telaffuz aşamasını **geçti mi**. `true` ise kelime dört yönden de
-  (tanıma, yazma, telaffuz, metinde görme) geçmiş sayılır.
+- `spokenTried` — kullanıcı kelimeyi **sesli tekrar etti mi**.
+- `spoken` — tanıma motoru kelimeyi **duyabildi mi**.
+
+> ⛔ **`spoken: false` "kötü telaffuz etti" DEMEK DEĞİL.** Tarayıcının konuşma
+> tanıması bir yazıcıdır, telaffuz puanlayıcısı değil: ne kadar iyi
+> söylediğine değil, ne dediğini anladığına bakar ve `en-US` için ayarlı
+> olduğu için Türk aksanında sık yanılır. `spokenTried: true` + `spoken:
+> false` = **kullanıcı çalıştı, alet duyamadı.** Bunu bir eksiklik gibi yazma,
+> kullanıcıyı telaffuzu yüzünden eleştirme. Uygulama da artık bu yüzden kartı
+> geri düşürmüyor.
+
 - `lastResult` — son cevabın sonucu: `correct` · `close` (ufak hata) · `wrong`
 - `studiedToday` — o gün kartlara hiç bakılmış mı
 
@@ -135,9 +144,9 @@ eder, ses karşılaştırılır). Her kelime için gelen alanlar:
    günün metnine ve görevlerine tekrar sok, üstüne yeni kelime yığma.
    `dailyNewWords`'ü de o gün bir düşür.
 
-`spoken: false` ama `stage: 3` ise kelime yazılabiliyor ama telaffuz
-denenmemiş; okuma parçasında o kelimeyi tekrar geçir ve konuşma görevinde
-kullanmasını iste.
+`spokenTried: false` ise kelime hiç sesli tekrar edilmemiş; okuma parçasında
+o kelimeyi tekrar geçir ve konuşma görevinde kullanmasını iste. (`spoken:
+false` tek başına bir eksiklik değildir — yukarıdaki uyarıya bak.)
 
 ## 1.2 Seviye **değişmiş mi** — ⚠️ önce buna bak
 
@@ -316,6 +325,32 @@ yüzlerce var; bu uygulamanın iddiası **seviyeye ve kişiye göre müfredat ku
 bir öğretmen.** Müfredatı (`plan.curriculum`) doldurmak isteğe bağlı değil.
 
 ## 2. Her yazıyı düzelt
+
+### ⛔ ÖNCE BAK: `viaSpeech: true` ise o metin **yazı değil, dikte**
+
+Görevde `viaSpeech: true` varsa kullanıcı o cevabı **mikrofona konuşarak**
+verdi; ekrandaki metni tarayıcının konuşma tanıması yazdı, kullanıcı değil.
+
+**Bu metinde şunlardan hata çıkarma — hiçbiri kullanıcının değil:**
+
+- `spelling` · `punctuation` — tanıma motoru nokta, virgül, büyük harf koymaz.
+- Duyma kaynaklı kelime kaymaları: *work/walk*, *live/leave*, *three/tree*,
+  *his/is*, *a/the*. Cümle bağlamında saçmalayan tek bir kelime varsa bu
+  neredeyse her zaman motorun hatasıdır.
+- Kopuk/yarım cümle, tekrar eden kelime, birleşik yazılmış kelimeler.
+
+**Şunları normal şekilde düzelt:** kelime seçimi, zaman kullanımı, cümle
+kurulumu, edatlar — yani konuşurken de yapılan gerçek hatalar. Şüphedeysen
+**hata sayma**; `natural` alanında doğrusunu modelle, `errors[]`'a ekleme.
+
+> ⚠️ **Bu kural neden var:** bayrak eklenmeden önce öğretmen, motorun
+> uydurduğu cümleyi kullanıcı yazmış sanıp tek tek düzeltiyordu. Düzeltmeler
+> hata veritabanına yazılıyor ve **sonraki dersler o hatalardan kuruluyordu.**
+> Bir test kullanıcısında hiç yapmadığı **173 hata** birikmişti. Sahte hata
+> yalnızca o günü değil, kullanıcının bütün müfredatını bozuyor.
+
+`kind: 'speaking'` olup `viaSpeech` gelmeyen bir cevap klavyeyle yazılmıştır;
+ona normal davran.
 
 Her `pendingTasks` öğesi için:
 
