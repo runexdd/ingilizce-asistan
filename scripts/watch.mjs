@@ -34,7 +34,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,6 +52,17 @@ const DESCRIPTION_PREFIX = 'ingilizce-asistan';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** Son işlenen paketin damgası burada tutulur — aynı paketi iki kez işleme */
 const STATE_FILE = join(ROOT, '.watch-state.json');
+/**
+ * Nöbetçinin kendi kaydı.
+ *
+ * ⚠️ 12 Ağustos'ta nöbetçi iki gün boyunca hiçbir iş yapmadı ve **bunu hiç
+ * kimse göremedi**: süreç arka planda penceresiz çalıştığı için `console.log`
+ * çıktısı hiçbir yere düşmüyordu. Artık her satır diske de yazılıyor;
+ * "nöbetçi ne yapıyor" sorusu tahminle değil dosyaya bakarak cevaplanıyor.
+ */
+const LOG_FILE = join(ROOT, '.watch-log.txt');
+/** Kayıt dosyası bu boyutu aşınca yarısı atılır — disk şişmesin */
+const LOG_MAX_BYTES = 256 * 1024;
 /** Telefondan gelen paket — öğretmen bunu diskten okur, ağa çıkmaz */
 const OUTBOX_FILE = join(ROOT, '.outbox.json');
 /** Öğretmenin yazdığı cevap — nöbetçi bunu gist'e gönderir */
@@ -105,6 +116,18 @@ const MAX_FAILS = 4;
 const TEACHER_TIMEOUT_MS = 12 * 60 * 1000;
 
 /**
+ * Kalp atışı: nöbetçi gist'e "buradayım" diye yazar.
+ *
+ * ⚠️ Neden gerekti: 10 Ağustos akşamı nöbetçi dört kez üst üste başarısız
+ * olup pes etti, iki gün hiçbir ders üretmedi ve telefonda **hiçbir şey
+ * değişmedi** — ekran "öğretmen çalışıyor" havasındaydı. Sessiz başarısızlık
+ * bu projede tekrar tekrar can yaktı. Uygulama artık nöbetçinin son ne zaman
+ * ayakta olduğunu görüyor ve susmuşsa açıkça yazıyor.
+ */
+const HEARTBEAT_GAP_MS = 15 * 60 * 1000;
+const HEARTBEAT_FILE = 'watch.json';
+
+/**
  * ⛔ **Aynı anda tek tur.**
  *
  * `setInterval` turu beklemiyordu; öğretmen dakikalarca sürdüğü için ikinci,
@@ -120,8 +143,48 @@ function stamp() {
   return new Date().toLocaleTimeString('tr-TR');
 }
 
+/**
+ * Bekleyen yazma işleri.
+ *
+ * ⚠️ Testte yakalandı: `log()` diske **beklemeden** yazıyordu ve `--once`
+ * kipinde süreç, son satırlar diske düşmeden kapanıyordu — turun sonucu tam
+ * da en çok merak edilen yerde kayboluyordu. Satırlar sıraya diziliyor,
+ * çıkmadan önce `flushLog()` ile bekleniyor.
+ */
+let logChain = Promise.resolve();
+
 function log(message) {
-  console.log(`[${stamp()}] ${message}`);
+  const line = `[${stamp()}] ${message}`;
+  console.log(line);
+  logChain = logChain.then(() => appendLog(line)).catch(() => {});
+}
+
+/** Bekleyen kayıt satırları diske düşene kadar bekler */
+function flushLog() {
+  return logChain;
+}
+
+/**
+ * Kayıt dosyasına ekler. Hata **yutulur**: nöbetçinin asıl işi ders üretmek,
+ * günlük tutamadı diye tur çökmemeli.
+ */
+async function appendLog(line) {
+  try {
+    /**
+     * ⚠️ `toISOString()` UTC verir; saat damgası ise yerel. Gece 01:00'de
+     * kayıt "11 Ağustos 01:15" diye yazıyordu — bir önceki gün. Nöbetçi
+     * hatalarını geriye dönük ararken en son isteyeceğin şey yanlış tarih.
+     */
+    await appendFile(LOG_FILE, `${localDay()} ${line}\n`, 'utf8');
+    const { size } = await stat(LOG_FILE);
+    if (size > LOG_MAX_BYTES) {
+      const text = await readFile(LOG_FILE, 'utf8');
+      const lines = text.split('\n');
+      await writeFile(LOG_FILE, lines.slice(Math.floor(lines.length / 2)).join('\n'), 'utf8');
+    }
+  } catch {
+    /* günlük tutulamadı, iş devam */
+  }
 }
 
 async function getToken() {
@@ -208,6 +271,54 @@ async function readGistFile(gist, name) {
     return await (await fetch(file.raw_url)).text();
   }
   return file.content ?? null;
+}
+
+/**
+ * Kalp atışını gist'e yazar ve **yeni durumu döndürür**.
+ *
+ * ⚠️ Kendi yazdığımız dosya gist'i değiştirdiği için ETag'i geçersiz kılar;
+ * önlem alınmazsa her kalp atışı bir sonraki turda 80 KB'lık tam indirmeye
+ * yol açardı (ETag tasarrufunun tamamı çöpe giderdi). Bu yüzden PATCH
+ * yanıtının ETag'i saklanıyor: yanıt gövdesi GET ile aynı temsil olduğu için
+ * bir sonraki koşullu istek 304 dönüyor. Tutmazsa en kötü ihtimalle bir kez
+ * tam indirme olur — eski davranışa döner, bozulan bir şey olmaz.
+ */
+async function sendHeartbeat(token, gistId, state, extra = {}) {
+  const now = Date.now();
+  if (!gistId) return state;
+  if (now - (state.lastHeartbeatAt ?? 0) < HEARTBEAT_GAP_MS && !extra.force) {
+    return state;
+  }
+
+  const payload = {
+    at: new Date(now).toISOString(),
+    lastLessonDate: state.lastLessonDate ?? null,
+    fails: state.fails ?? 0,
+    /** Nöbetçi pes ettiyse telefon bunu "kendiliğinden düzelmez" diye okuyor */
+    gaveUp: Boolean(extra.gaveUp),
+    host: process.env.COMPUTERNAME || 'bilgisayar',
+  };
+
+  try {
+    const res = await fetch(`${API}/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { ...headers(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: { [HEARTBEAT_FILE]: { content: JSON.stringify(payload, null, 2) } },
+      }),
+    });
+    if (!res.ok) return state;
+    const next = {
+      ...state,
+      lastHeartbeatAt: now,
+      etag: res.headers.get('etag') ?? state.etag,
+    };
+    await saveState(next);
+    return next;
+  } catch {
+    // Ağ yoksa kalp atışı da atılamaz; zaten telefon da göremiyor olacak
+    return state;
+  }
 }
 
 async function loadState() {
@@ -332,12 +443,42 @@ async function tick(token, options) {
     return;
   }
 
-  // Gist hiç değişmemiş — telefon yeni bir şey göndermemiş, veri harcamadık
+  /**
+   * Gist hiç değişmemiş — telefon yeni bir şey göndermemiş, veri harcamadık.
+   *
+   * ⚠️⚠️ **Buradaki erken çıkış nöbetçiyi iki gün kör etti.** Aşağıdaki
+   * "bugünün dersi yok" kontrolü bu satırların *altında* olduğu için hiç
+   * çalışmıyordu: telefon sessizse gist değişmez, gist değişmezse tur burada
+   * biter, ders de hiç üretilmezdi. Ömer uygulamayı telefondan silince
+   * senkron durdu ve öğretmen sustu — kimse de fark etmedi.
+   *
+   * Doğrusu: paket değişmemiş olabilir ama **gün değişmiş** olabilir.
+   * Bugüne ders kurulmadıysa elimizdeki (değişmemiş) paketle çalışmak
+   * gerekir, bunun için gövdeyi koşulsuz bir kez indiriyoruz.
+   */
   if (fetched.unchanged) {
+    let next = state;
     if (state.gistId !== fetched.gistId) {
-      await saveState({ ...state, gistId: fetched.gistId });
+      next = { ...next, gistId: fetched.gistId };
+      await saveState(next);
     }
-    return;
+
+    const dersGerekiyor = next.lastLessonDate !== localDay();
+    const sonTurdanBeri = Date.now() - (next.lastRunAt ?? 0);
+    if (!dersGerekiyor || sonTurdanBeri < REFRESH_GAP_MS) {
+      await sendHeartbeat(token, fetched.gistId, next);
+      return;
+    }
+
+    log('paket değişmedi ama bugüne ders yok — gövde koşulsuz indiriliyor.');
+    try {
+      fetched = await fetchGist(token, { ...next, etag: null });
+    } catch (error) {
+      log(`bağlanılamadı: ${error.message}`);
+      return;
+    }
+    if (fetched.unchanged || !fetched.gist) return;
+    state = next;
   }
 
   const gist = fetched.gist;
@@ -363,8 +504,15 @@ async function tick(token, options) {
   }
 
   const generatedAt = outbox.generatedAt ?? null;
-  if (generatedAt && generatedAt === state.lastOutboxAt) {
-    return; // yeni bir şey yok, sessizce bekle
+  /**
+   * ⚠️ Bu da ETag çıkışıyla **aynı hatanın ikizi**: "paket zaten işlendi"
+   * demek "bugünün işi bitti" demek değil. Telefon günlerdir yeni bir şey
+   * göndermemiş olabilir; ders yine de her gün kurulmalı. Sadece paket
+   * aynıysa **ve** bugüne ders varsa sessizce bekliyoruz.
+   */
+  if (generatedAt && generatedAt === state.lastOutboxAt && state.lastLessonDate === localDay()) {
+    state = await sendHeartbeat(token, fetched.gistId, state);
+    return;
   }
 
   /* Gerçekten iş var mı — boş bir senkron için öğretmen çalıştırma */
@@ -393,8 +541,10 @@ async function tick(token, options) {
   if (needsToday) reasons.push('bugünün dersi yok');
 
   if (reasons.length === 0) {
-    await saveState({ ...state, lastOutboxAt: generatedAt, fails: 0 });
+    state = { ...state, lastOutboxAt: generatedAt, fails: 0 };
+    await saveState(state);
     log('yeni paket var ama işlenecek bir şey yok.');
+    await sendHeartbeat(token, fetched.gistId, state);
     return;
   }
 
@@ -417,9 +567,15 @@ async function tick(token, options) {
 
   if (fails >= MAX_FAILS) {
     log(
-      `${fails} kez üst üste başarısız oldu, bu paket bırakılıyor. Sorunu çözüp .watch-state.json dosyasını sil.`
+      `${fails} kez üst üste başarısız oldu, bu paket bırakılıyor. Ayrıntı: ${LOG_FILE}`
     );
-    await saveState({ ...state, lastOutboxAt: generatedAt, fails: 0 });
+    state = { ...state, lastOutboxAt: generatedAt, fails: 0 };
+    await saveState(state);
+    /**
+     * Pes etme **telefona da bildiriliyor**. Eskiden bu satır sessizdi:
+     * nöbetçi vazgeçiyor, ekran hiçbir şey söylemiyordu.
+     */
+    await sendHeartbeat(token, fetched.gistId, state, { force: true, gaveUp: true });
     return;
   }
 
@@ -506,7 +662,7 @@ async function tick(token, options) {
     await rm(OUTBOX_FILE, { force: true });
   }
 
-  await saveState({
+  state = {
     // ⚠️ `state`'i yay: `gistId` ve `etag` burada düşerse her tur yeniden
     // liste isteği yapılır ve koşullu istek tasarrufu tamamen kaybolur.
     ...state,
@@ -514,7 +670,15 @@ async function tick(token, options) {
     fails: sent ? 0 : fails + 1,
     lastLessonDate: lessonDate,
     lastRunAt: Date.now(),
-  });
+  };
+  await saveState(state);
+
+  /**
+   * Tur bittiğinde kalp atışı **zorla** atılıyor: telefon hem "ne zaman
+   * çalıştı" hem de "kaç kez tökezledi" bilgisini turun hemen ardından
+   * görsün. Paket gönderdiysek gist zaten değişti, ek maliyeti yok.
+   */
+  await sendHeartbeat(token, fetched.gistId, state, { force: true });
 }
 
 /** Kilitli tur — aynı anda ikinci bir öğretmen süreci başlamasın */
@@ -548,7 +712,10 @@ async function main() {
   await rm(OUTBOX_FILE, { force: true });
 
   const stop = () => {
-    void rm(OUTBOX_FILE, { force: true }).finally(() => process.exit(0));
+    log('nöbetçi durduruldu.');
+    void rm(OUTBOX_FILE, { force: true })
+      .then(flushLog)
+      .finally(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
@@ -560,7 +727,21 @@ async function main() {
   );
 
   await guardedTick(token, options);
-  if (options.once) return;
+
+  /**
+   * Açılış kalp atışı: nöbetçi yeni başladıysa telefon bunu ilk turda görsün.
+   * Aksi hâlde bilgisayar yeni açılmışken ekran hâlâ "saatlerdir sessiz"
+   * diyor ve kullanıcı boşuna uğraşıyor.
+   */
+  const başlangıç = await loadState();
+  if (başlangıç.gistId) {
+    await sendHeartbeat(token, başlangıç.gistId, başlangıç, { force: true });
+  }
+
+  if (options.once) {
+    await flushLog();
+    return;
+  }
 
   setInterval(() => {
     void guardedTick(token, options);

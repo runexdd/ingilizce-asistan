@@ -328,6 +328,71 @@ export function isContentStale(data: AppData): boolean {
   return staleSince(data, changed);
 }
 
+/* ------------------------------------------------- nöbetçi sessiz mi? */
+
+export interface WatchWarning {
+  /** Ekranda gösterilecek kısa cümle */
+  text: string;
+  /** `uyari` sarı, `hata` kırmızı — pes etmiş nöbetçi kendiliğinden düzelmez */
+  tone: 'uyari' | 'hata';
+}
+
+/** Kaç saat sessizlikten sonra kullanıcıya söylenir */
+const SESSIZLIK_SAATI = 3;
+/** Bu saatten sonra hâlâ ders yoksa bir şeyler ters demektir */
+const DERS_BEKLENEN_SAAT = 12;
+
+/**
+ * Nöbetçi susmuş mu — susmuşsa ekranda ne yazmalı.
+ *
+ * ⚠️ Bu fonksiyonun varlık sebebi 10-12 Ağustos: nöbetçi iki gün boyunca
+ * hiçbir ders üretmedi, uygulama hiçbir şey söylemedi, kullanıcı "öğretmen
+ * çalışıyor" sanarak bekledi. Uygulama öğretmeni çalıştıramaz — bilgisayar
+ * gerekiyor — ama **sustuğunu söyleyebilir.** `isContentStale` ile aynı
+ * felsefe: düzeltemediğini en azından itiraf et.
+ *
+ * Saf fonksiyon; `now` dışarıdan verilir ki test edilebilsin.
+ */
+export function watchWarning(data: AppData, now: Date = new Date()): WatchWarning | null {
+  const w = data.watchStatus;
+  // Henüz hiç kalp atışı görülmedi (eski nöbetçi ya da hiç senkron olmadı):
+  // "sessiz" demek yanlış olur, bilmiyoruz.
+  if (!w?.at) return null;
+
+  const gecen = now.getTime() - Date.parse(w.at);
+  if (Number.isNaN(gecen)) return null;
+  const saat = Math.floor(gecen / 3600000);
+
+  if (w.gaveUp) {
+    return {
+      text: 'Öğretmen üst üste takıldı ve durdu. Bilgisayarda nöbetçiye bakılması gerekiyor — kendiliğinden düzelmez.',
+      tone: 'hata',
+    };
+  }
+
+  if (saat >= SESSIZLIK_SAATI) {
+    const sure = saat >= 48 ? `${Math.floor(saat / 24)} gündür` : `${saat} saattir`;
+    return {
+      text: `Öğretmen ${sure} sessiz. Bilgisayar kapalı olabilir; açıldığında biriken işler tek seferde işlenir.`,
+      tone: saat >= 24 ? 'hata' : 'uyari',
+    };
+  }
+
+  /**
+   * Nöbetçi ayakta ama bugüne ders kurmamış. Sabahın erken saatinde bu
+   * normal (henüz sıra gelmemiştir), o yüzden öğleden önce susuyoruz.
+   */
+  const bugun = toISODate(now);
+  if (w.lastLessonDate !== bugun && now.getHours() >= DERS_BEKLENEN_SAAT) {
+    return {
+      text: 'Nöbetçi çalışıyor ama bugünün dersi henüz kurulmamış. Telefonda bir şey yapınca tetiklenir.',
+      tone: 'uyari',
+    };
+  }
+
+  return null;
+}
+
 /* ------------------------------------------- öğretmen mi, uygulama mı? */
 
 export interface ActiveContent {

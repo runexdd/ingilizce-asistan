@@ -33,6 +33,7 @@ import {
   markQuestionsSynced,
   markTasksSynced,
   setSync,
+  setWatchStatus,
   updateProfile,
 } from '../../src/db/mutations';
 import { useStore } from '../../src/db/store';
@@ -149,6 +150,7 @@ export default function SettingsScreen() {
       next = markConversationsSynced(next, sentConversations);
       next = setSync(next, { lastPushAt: new Date().toISOString() });
       if (pulled.inbox) next = applyInbox(next, pulled.inbox);
+      next = setWatchStatus(next, pulled.watch);
       return next;
     });
 

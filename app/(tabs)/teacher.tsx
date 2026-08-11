@@ -31,6 +31,7 @@ import {
   getActiveContent,
   getActiveConversation,
   isContentStale,
+  watchWarning,
 } from '../../src/db/selectors';
 import { useStore } from '../../src/db/store';
 import { colors, radius, spacing } from '../../src/ui/theme';
@@ -129,6 +130,12 @@ export default function TeacherScreen() {
    */
   const stale = isContentStale(data);
 
+  /**
+   * Bilgisayardaki nöbetçi ayakta mı. `data.watchStatus` her senkronda
+   * tazeleniyor; susmuşsa en üstte açıkça yazıyor.
+   */
+  const nobetci = useMemo(() => watchWarning(data), [data]);
+
   const teacherQuestions = data.teacherQuestions ?? [];
   const unansweredQuestions = teacherQuestions.filter((q) => !q.answer).length;
   const answeredQuestions = teacherQuestions.filter(
@@ -166,6 +173,19 @@ export default function TeacherScreen() {
             Yeni seviyene göre olanlar bir sonraki senkronda gelecek; o zamana
             kadar kartlar ve okuma zaten {data.profile.level} seviyesinden
             geliyor.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* ------------------------------------------- nöbetçi susmuş mu
+          Öğretmen bilgisayarda çalışıyor; bilgisayar kapalıysa ya da
+          nöbetçi takıldıysa telefonda **hiçbir şey** değişmiyordu ve ekran
+          her zamanki gibi görünüyordu. İki gün böyle geçti. Artık
+          söylüyoruz — düzeltemediğimizi en azından itiraf ediyoruz. */}
+      {nobetci ? (
+        <View style={[styles.watchBox, nobetci.tone === 'hata' && styles.watchBoxError]}>
+          <Text style={[styles.watchText, nobetci.tone === 'hata' && styles.watchTextError]}>
+            {nobetci.text}
           </Text>
         </View>
       ) : null}
@@ -709,6 +729,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs + 2,
     lineHeight: 19,
   },
+
+  /* nöbetçi sessiz uyarısı — sarı: bekle, kırmızı: elle bakılmalı */
+  watchBox: {
+    backgroundColor: '#FFFAEB',
+    borderWidth: 1,
+    borderColor: '#FEC84B',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  watchBoxError: { backgroundColor: '#FEF3F2', borderColor: '#FDA29B' },
+  watchText: { fontSize: 14, color: '#93370D', lineHeight: 21 },
+  watchTextError: { color: '#B42318' },
 
   staleBox: {
     backgroundColor: '#FFFAEB',

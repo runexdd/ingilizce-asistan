@@ -38,6 +38,10 @@ sync-token.txt
 
 # nobetci betiginin son islenen paket damgasi (yerel durum)
 .watch-state.json
+.watch-state.json.yedek
+
+# nobetcinin kendi kaydi - yerel, makineye ozel
+.watch-log.txt
 
 # nobetci ile ogretmen arasinda gidip gelen gecici dosyalar
 .inbox-draft.json

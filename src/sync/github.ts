@@ -38,12 +38,15 @@ import type {
   TaskRecord,
   TeacherPlan,
   TeacherScore,
+  WatchStatus,
 } from '../db/types';
 
 const API = 'https://api.github.com';
 const GIST_DESCRIPTION = 'ingilizce-asistan · senkron (silme)';
 const OUTBOX_FILE = 'outbox.json';
 const INBOX_FILE = 'inbox.json';
+/** Nöbetçinin kalp atışı — `scripts/watch.mjs` yazar, uygulama sadece okur */
+const WATCH_FILE = 'watch.json';
 
 export interface OutboxTask {
   id: string;
@@ -582,7 +585,9 @@ export async function pushOutbox(
 export async function pullInbox(
   token: string,
   gistId: string
-): Promise<{ inbox: InboxPayload | null } | { error: string }> {
+): Promise<
+  { inbox: InboxPayload | null; watch: WatchStatus | null } | { error: string }
+> {
   try {
     const res = await api(`/gists/${gistId}`, token);
     if (!res.ok) return { error: `Okunamadı (${res.status}).` };
@@ -590,19 +595,36 @@ export async function pullInbox(
     const gist = (await res.json()) as {
       files: Record<string, { content?: string; truncated?: boolean; raw_url?: string }>;
     };
+
+    /**
+     * Nöbetçinin kalp atışı aynı gist'te duruyor, yani **ek istek yok**.
+     * Bozuk ya da eksikse sessizce yok sayılır: kalp atışı okunamadı diye
+     * öğretmenin paketi uygulanmamazlık edemez.
+     */
+    let watch: WatchStatus | null = null;
+    try {
+      const raw = gist.files?.[WATCH_FILE]?.content;
+      if (raw && raw.trim()) {
+        const w = JSON.parse(raw) as WatchStatus;
+        if (w && typeof w.at === 'string') watch = w;
+      }
+    } catch {
+      watch = null;
+    }
+
     const file = gist.files?.[INBOX_FILE];
-    if (!file) return { inbox: null };
+    if (!file) return { inbox: null, watch };
 
     let content = file.content ?? '';
     // Büyük dosyalar kısaltılmış gelir; tam halini ayrı adresten çek
     if (file.truncated && file.raw_url) {
       content = await (await fetch(file.raw_url)).text();
     }
-    if (!content.trim() || content.trim() === '{}') return { inbox: null };
+    if (!content.trim() || content.trim() === '{}') return { inbox: null, watch };
 
     const parsed = JSON.parse(content) as InboxPayload;
-    if (!parsed || typeof parsed !== 'object') return { inbox: null };
-    return { inbox: parsed };
+    if (!parsed || typeof parsed !== 'object') return { inbox: null, watch };
+    return { inbox: parsed, watch };
   } catch {
     return { error: 'Gelen kutusu okunamadı (bozuk veri olabilir).' };
   }

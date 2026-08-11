@@ -673,6 +673,30 @@ export interface AppData {
    * gösterilmeye devam ediyor.
    */
   lastInboxAt?: string;
+
+  /**
+   * Nöbetçinin kalp atışı — bilgisayardaki öğretmen süreci ayakta mı.
+   *
+   * ⚠️ Neden var: nöbetçi 10-12 Ağustos arasında iki gün boyunca hiçbir ders
+   * üretmedi ve uygulama bunu **hiçbir yerde söylemedi**; ekran her zamanki
+   * gibi görünüyordu. Bu projede sessiz başarısızlık tekrar tekrar can yaktı.
+   * Uygulama öğretmeni çalıştıramaz (bilgisayar gerekiyor) ama **sustuğunu
+   * söyleyebilir** — `isContentStale` ile aynı felsefe.
+   */
+  watchStatus?: WatchStatus;
+}
+
+/** `watch.json` — nöbetçinin gist'e bıraktığı "buradayım" notu */
+export interface WatchStatus {
+  /** Nöbetçinin son ayakta olduğu an (ISO) */
+  at: string;
+  /** Kurulan son dersin günü — bugünse ders gelmiş demektir */
+  lastLessonDate?: string | null;
+  /** Üst üste kaçıncı başarısızlık */
+  fails?: number;
+  /** Nöbetçi pes ettiyse true — kendiliğinden düzelmez, elle bakmak gerekir */
+  gaveUp?: boolean;
+  host?: string;
 }
 
 /* ------------------------------------------------- seviye içi puanlama */

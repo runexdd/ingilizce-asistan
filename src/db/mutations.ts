@@ -20,6 +20,7 @@ import type {
   TeacherPlan,
   ScenarioRun,
   TeacherQuestion,
+  WatchStatus,
 } from './types';
 
 /**
@@ -110,6 +111,19 @@ export function saveLevelExam(data: AppData, result: LevelExamResult): AppData {
     levelExam: result,
     profile: { ...data.profile, levelScore: result.score },
   };
+}
+
+/**
+ * Nöbetçinin kalp atışını saklar.
+ *
+ * `null` gelirse **eldeki damga korunuyor**: gist'te henüz `watch.json` yoksa
+ * (nöbetçi yeni sürüme geçmediyse) eski bilgiyi silip "hiç çalışmamış" gibi
+ * göstermek yanlış olurdu.
+ */
+export function setWatchStatus(data: AppData, watch: WatchStatus | null): AppData {
+  if (!watch) return data;
+  if (data.watchStatus?.at === watch.at) return data;
+  return { ...data, watchStatus: watch };
 }
 
 export function markLevelExamSynced(data: AppData): AppData {

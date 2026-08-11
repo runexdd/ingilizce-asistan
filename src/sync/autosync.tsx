@@ -41,6 +41,7 @@ import {
   markScenarioRunsSynced,
   markTasksSynced,
   setSync,
+  setWatchStatus,
 } from '../db/mutations';
 import { useStore } from '../db/store';
 import type { AppData } from '../db/types';
@@ -137,8 +138,10 @@ async function runSync(
       next = markScenarioRunsSynced(next);
       next = setSync(next, { lastPushAt: new Date().toISOString() });
     }
-    if (!('error' in pulled) && pulled.inbox) {
-      next = applyInbox(next, pulled.inbox);
+    if (!('error' in pulled)) {
+      if (pulled.inbox) next = applyInbox(next, pulled.inbox);
+      /** Nöbetçi ayakta mı — paket gelmese bile bu bilgi tazeleniyor */
+      next = setWatchStatus(next, pulled.watch);
     }
     return next;
   });
