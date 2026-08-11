@@ -1,7 +1,7 @@
 import type { LevelSizing } from '../core/level';
 import { buildLocalConversation, pickLocalContent } from '../core/localcontent';
 import { addDays, toISODate } from '../core/srs';
-import { isTooHardFor, levelDistance } from '../core/wordbank';
+import { isTooHardFor, isTooHardForWithVouch, levelDistance } from '../core/wordbank';
 import type {
   AppData,
   Card,
@@ -99,7 +99,7 @@ export function getStudyQueue(
    * Kural zaten `ogretmen.md`'de yazılı; doğru seçtiğinde hiçbir şey elenmez.
    */
   const due = getDueCards(data, today).filter(
-    (c) => !isTooHardFor(c.word, data.profile.level)
+    (c) => !isTooHardForWithVouch(c.word, data.profile.level, c.teacherLevel)
   );
 
   /**

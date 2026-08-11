@@ -10,6 +10,8 @@
  */
 
 import { transcriptText } from '../core/conversation';
+import { activeCurriculum, curriculumProgress } from '../core/curriculum';
+import { specOf, toLevel } from '../core/level';
 import {
   actualWeeklyMinutes,
   measureMomentum,
@@ -17,6 +19,7 @@ import {
 } from '../core/progress';
 import { addDays, toISODate } from '../core/srs';
 import { describeTastes } from '../core/tastes';
+import { WORD_BANK } from '../core/wordbank';
 import {
   getTodayWordProgress,
   isLevelStale,
@@ -153,6 +156,43 @@ export interface OutboxPayload {
    * kısaldıysa bugün bir daha kısaltmak abartı olur.
    */
   targetHistory: Array<{ date: string; level: string; daysRemaining: number }>;
+  /**
+   * **Kelime havuzunun durumu — öğretmen havuzdan ayrı hareket etmesin.**
+   *
+   * Kullanıcının isteği: *"havuzla öğretmeni entegre etmemiz lazım, havuz
+   * öğretmenden ayrı hareket etmesin."* Havuz artık A1'de **kapalı liste**
+   * (`KAPALI_SEVIYELER`): havuzda olmayan kelime kullanıcıya gösterilmiyor.
+   * Öğretmen bunu bilmezse seçtiği kelimeler sessizce eleniyor ve boşa
+   * çalışıyor.
+   *
+   * Bu alan ona havuzu gösteriyor: kaç kelime var, kaçını gördü, kaçı
+   * oturdu, hangileri zorluyor, kaç günlük malzeme kaldı. Kelime seçimi
+   * artık tahmin değil, envantere bakarak yapılan bir seçim.
+   */
+  wordPool: {
+    level: string;
+    /** Seviyedeki toplam kelime */
+    total: number;
+    /** Kart olarak görülmüş */
+    seen: number;
+    /** Üç aşamayı da geçmiş */
+    mastered: number;
+    /** Hiç görülmemiş */
+    remaining: number;
+    /** Bu tempoyla havuz kaç gün daha yeter */
+    daysOfMaterial: number;
+    /** En çok yanlış yapılan kelimeler — öğretmen bunlara dönsün */
+    struggling: string[];
+  };
+  /** Öğretmenin müfredatı ve kullanıcının merdivendeki yeri */
+  curriculum?: {
+    level: string;
+    done: number;
+    total: number;
+    lessonDaysLeft: number;
+    activeStep?: { id: string; title: string; goal: string; days: number };
+    steps: Array<{ id: string; title: string; days: number; status: string }>;
+  };
   /** Öğretmenin mevcut planı — varsa üzerine karar verir */
   currentPlan?: TeacherPlan;
 }
@@ -433,7 +473,75 @@ export function buildOutbox(data: AppData): OutboxPayload {
         level: p.level,
         daysRemaining: p.daysRemaining,
       })),
+    wordPool: buildWordPoolReport(data),
+    curriculum: buildCurriculumReport(data),
     currentPlan: data.plan,
+  };
+}
+
+/** Havuz envanteri — öğretmenin kelime seçerken bakacağı tablo */
+function buildWordPoolReport(data: AppData): OutboxPayload['wordPool'] {
+  const level = toLevel(data.profile.level);
+  const havuz = WORD_BANK.filter((w) => w.level === level);
+  const anahtar = (s: string) => s.trim().toLowerCase();
+
+  const kartlar = new Map(data.cards.map((c) => [anahtar(c.word), c]));
+  let seen = 0;
+  let mastered = 0;
+  for (const w of havuz) {
+    const kart = kartlar.get(anahtar(w.word));
+    if (!kart) continue;
+    seen++;
+    if ((kart.stage ?? 1) > 3 || kart.repetitions >= 3) mastered++;
+  }
+
+  /**
+   * Zorlayan kelimeler: birinci basamakta takılmış, yani en az bir kez
+   * cevaplanmış ama hâlâ tanıma aşamasında olanlar.
+   */
+  const struggling = data.cards
+    .filter((c) => (c.stage ?? 1) === 1 && c.lastAnsweredAt && c.repetitions === 0)
+    .map((c) => c.word)
+    .slice(0, 12);
+
+  const gunluk = Math.max(1, data.plan?.dailyNewWords ?? specOf(level).maxNewWordsPerDay);
+
+  return {
+    level,
+    total: havuz.length,
+    seen,
+    mastered,
+    remaining: havuz.length - seen,
+    daysOfMaterial: Math.floor((havuz.length - seen) / gunluk),
+    struggling,
+  };
+}
+
+/** Müfredatın durumu — öğretmen kendi merdivenini görüp güncellesin */
+function buildCurriculumReport(data: AppData): OutboxPayload['curriculum'] {
+  const mufredat = activeCurriculum(data.profile.level, data.plan?.curriculum);
+  if (!mufredat) return undefined;
+
+  const ilerleme = curriculumProgress(mufredat);
+  return {
+    level: mufredat.level,
+    done: ilerleme.done,
+    total: ilerleme.total,
+    lessonDaysLeft: ilerleme.remainingLessonDays,
+    activeStep: ilerleme.step
+      ? {
+          id: ilerleme.step.id,
+          title: ilerleme.step.title,
+          goal: ilerleme.step.goal,
+          days: ilerleme.step.days,
+        }
+      : undefined,
+    steps: mufredat.steps.map((s) => ({
+      id: s.id,
+      title: s.title,
+      days: s.days,
+      status: s.status,
+    })),
   };
 }
 

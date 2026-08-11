@@ -321,6 +321,37 @@ export function isTooHardFor(
 }
 
 /**
+ * **Öğretmenin kefaletiyle** seviye denetimi.
+ *
+ * Kullanıcının kuralı: *"havuzla öğretmeni entegre etmemiz lazım, havuz
+ * öğretmenden ayrı hareket etmesin."* Kapalı liste (A1) sızıntıyı kesti ama
+ * öğretmenin elini de bağladı: havuzda olmayan her kelime eleniyordu, oysa
+ * öğretmen içeriğe özel doğru bir kelime seçmiş olabilir (`lap`, `pit stop`).
+ *
+ * Kefalet **dar**: yalnızca cetvelin tanımadığı kelimeler için geçer.
+ * Cetvel kelimenin üst seviye olduğunu biliyorsa kefalet işlemez — öğretmen
+ * *"to be excited A1'dir"* diyemez, çünkü havuzda A2 olarak yazılı. Yani
+ * öğretmen havuzu **genişletebilir, çiğneyemez.**
+ *
+ * `vouchedLevel` öğretmenin o kelime için yazdığı seviye; yoksa kefalet yok.
+ */
+export function isTooHardForWithVouch(
+  word: string,
+  level: string,
+  vouchedLevel: string | undefined
+): boolean {
+  const zor = isTooHardFor(word, level);
+  if (!zor || !vouchedLevel) return zor;
+
+  /** Cetvel biliyorsa kefalet geçmez */
+  const { level: bilinen } = phraseLevel(word);
+  if (bilinen) return zor;
+
+  /** Kefalet ancak kullanıcının seviyesini aşmıyorsa geçerli */
+  return levelIndex(vouchedLevel) > levelIndex(level);
+}
+
+/**
  * Kelime bu seviyedeki biri için fazla **kolay** mı?
  *
  * ⚠️ Bu ölçü, kullanıcının *"B2'ye aldığımda kelime kısmı hâlâ değişmiyor"*

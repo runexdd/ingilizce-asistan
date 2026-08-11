@@ -220,6 +220,48 @@ export default function TeacherScreen() {
           </Text>
         </Pressable>
 
+        {/**
+          * **Müfredat çubuğu — gün sayısının nereden geldiği.**
+          *
+          * Kullanıcının kuralı: *"öğretmen seviyeye uygun müfredat
+          * belirlemeli, hazırlanan müfredatla beraber gün sayısı eşleşmeli."*
+          * Sayının yanında merdiveni göstermek onu **denetlenebilir** yapıyor:
+          * "11 basamağın 3'ü bitti, 42 ders günü kaldı" cümlesi kontrol
+          * edilebilir; "540 gün" edilemez.
+          */}
+        {estimate?.curriculum ? (
+          <View style={styles.curriculumBox}>
+            <Text style={styles.curriculumHead}>
+              {data.profile.level} müfredatı · {estimate.curriculum.done}/
+              {estimate.curriculum.total} basamak
+            </Text>
+            <View style={styles.stepTrack}>
+              {Array.from({ length: estimate.curriculum.total }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.stepDot,
+                    i < estimate.curriculum!.done && styles.stepDotDone,
+                    i === estimate.curriculum!.done && styles.stepDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+            {estimate.curriculum.stepTitle ? (
+              <Text style={styles.curriculumStep}>
+                Şu an: {estimate.curriculum.stepTitle}
+              </Text>
+            ) : null}
+            {estimate.curriculum.stepGoal ? (
+              <Text style={styles.curriculumGoal}>{estimate.curriculum.stepGoal}</Text>
+            ) : null}
+            <Text style={styles.curriculumDays}>
+              {estimate.curriculum.lessonDaysLeft} ders günü kaldı — her gün
+              çalışırsan {estimate.curriculum.lessonDaysLeft} günde biter.
+            </Text>
+          </View>
+        ) : null}
+
         {estimate && trend ? (
           <>
             <Text
@@ -621,6 +663,47 @@ const styles = StyleSheet.create({
   },
   scoreFill: { height: 8, borderRadius: 4, backgroundColor: colors.weekend },
   scoreText: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: spacing.xs + 2,
+    lineHeight: 19,
+  },
+
+  curriculumBox: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  curriculumHead: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  stepTrack: { flexDirection: 'row', gap: 4, marginTop: spacing.sm },
+  stepDot: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  stepDotDone: { backgroundColor: colors.success },
+  stepDotActive: { backgroundColor: colors.accent },
+  curriculumStep: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  curriculumGoal: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 19,
+  },
+  curriculumDays: {
     fontSize: 13,
     color: colors.muted,
     marginTop: spacing.xs + 2,

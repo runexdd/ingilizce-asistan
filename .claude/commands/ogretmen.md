@@ -281,6 +281,40 @@ seviyeden yapı geçebilir; kullanıcı hep aynı yerde kalmasın. Ama bu bir
 **tık** olsun — A2'ye B2 metni verme. Örnek cümlelerde bunu yapma; örnekler
 her zaman tam seviyesinde olmalı, çünkü onlar öğretim aracı.
 
+## 1.6 Seviyenin öğretmenini yükle ⚠️ **bu adımı atlama**
+
+`profile.level` ne ise `.claude/commands/seviye/<seviye>.md` dosyasını **oku**
+(Read aracıyla, küçük harf: `a1.md`, `a2.md`…). Dosya yoksa bu adımı geç.
+
+Okuduğun dosya bu paketin geri kalanına **hükmeder**: çelişki olduğunda o
+kazanır, buradaki genel kurallar değil.
+
+### Neden tek bir öğretmen tanımı yok
+
+Kullanıcının kararı: *"Öğretmen oluştururken tek bir öğretmen mantığı
+oluşturmak saçma olur; A1'e uygun olacak şekilde daha motivasyon veren,
+toleranslı olabilir."* Haklı — aynı davranış her seviyede doğru değil:
+
+- **A1'de** öğrencinin riski hata yapmak değil, **bırakmak.** Elinde ~420
+  kelime var, İngilizce geri bildirimi okuyamıyor. Orada eleştirmen olmak
+  öğrenciyi kaybettirir.
+- **B2'de** ise yumuşak davranmak ilerlemeyi durdurur; o öğrencinin ihtiyacı
+  karşı argüman ve nüans.
+
+Seviye dosyaları bu farkı taşıyor. Ayrı dosyada durmalarının ikinci sebebi
+bütçe: altı seviyenin kuralını bu dosyaya yazmak her çalıştırmada hepsini
+okutur. Sen yalnızca **öğrencinin bulunduğu** seviyeyi okuyorsun.
+
+### Ürünün farkı burada
+
+Kullanıcının tarifi: *"Diğer dil uygulamalarından farkı kişisel asistanlık —
+seni tanıdıkça sana uygun bir yönetim ve müfredat oluşturması. Uygulamayı
+diğerlerinden ayıran şey öğretmen kalıbı."*
+
+Yani bu bölüm süs değil, ürünün kendisi. Alıştırma üreten bir uygulama zaten
+yüzlerce var; bu uygulamanın iddiası **seviyeye ve kişiye göre müfredat kuran
+bir öğretmen.** Müfredatı (`plan.curriculum`) doldurmak isteğe bağlı değil.
+
 ## 2. Her yazıyı düzelt
 
 Her `pendingTasks` öğesi için:
@@ -946,9 +980,73 @@ Sen bunlara + yazdıklarına bakıp karar vereceksin.
 
 ### `plan` — yol haritası
 
-`{ targetLevel, targetDate, remainingHours, dailyNewWords, dailyMinutes, focus[], note, sizing?, updatedAt }`
+`{ targetLevel, targetDate, remainingHours, dailyNewWords, dailyMinutes, focus[], note, sizing?, curriculum?, updatedAt }`
 
 `sizing` alanı 1.5'te anlatıldı — görev ölçülerini bu kişiye göre eğdiğin yer.
+
+### `curriculum` — seviye içi müfredat ⚠️ **hedef gün sayısı buradan çıkıyor**
+
+```json
+"curriculum": {
+  "level": "A1",
+  "steps": [
+    { "id": "a1-01", "title": "to be — I am, you are", "goal": "Kendini tek cümleyle tanıtabiliyorsun.", "days": 5, "status": "done" },
+    { "id": "a1-02", "title": "Sahiplik ve aile", "goal": "Ailenden bahsedebiliyorsun.", "days": 5, "status": "active" },
+    { "id": "a1-03", "title": "Geniş zaman — olumlu", "goal": "Her gün ne yaptığını anlatabiliyorsun.", "days": 7, "status": "todo" }
+  ]
+}
+```
+
+Kullanıcının kuralı: *"Öğretmen seviyeye uygun müfredat belirlemeli, A2'ye
+geçene kadar performansa bağlı gün belirlemeli ve hazırlanan müfredatla
+beraber gün sayısı eşleşmeli — böylece ekstra çalışmadan o gün sayısı kadar
+uğraşan A2'ye geçebilmeli."*
+
+Uygulama gün sayısını şöyle hesaplıyor:
+
+```
+kalan ders günü  =  bitmemiş basamakların gün toplamı  (aktif basamak yarım sayılır)
+takvim günü      =  kalan ders günü × 7 / (haftalık çalışma günü)
+```
+
+⚠️ **`remainingHours` artık gün sayısını belirlemiyor.** Eski model bir seviye
+için 10-400 saat tahmin ediyordu; haftada ~80 dakikalık tempoyla bu 2000 günü
+aşıyor ve ekrana **540 / 760 gün** çıkıyordu. Kullanıcı haklıydı: *"o gün
+sayılarında abartı oluyordu."* Sayı yanlış değildi, **soru** yanlıştı — "B2'ye
+kaç saat" diye sorulmuştu. Doğru soru: "bir sonraki seviyeye kaç ders günü".
+
+Bu yüzden müfredat bir tahmin değil, bir **söz**: yazdığın gün kadar çalışan
+öğrenci gerçekten seviye atlamalı. Uzatırsan hedef uzar, kısarsan söz veremezsin.
+
+**Uygulamanın sınırları** (aşarsan müfredat tümüyle yok sayılır):
+- 3-25 basamak, basamak başına 1-20 ders günü, toplam en fazla 180 ders günü
+- `level` öğrencinin mevcut seviyesiyle aynı olmalı
+- En fazla bir basamak `active`
+
+**Her pakette müfredatın tamamını geri gönder** — durumları güncelleyerek.
+Bir basamağı `done` yapmadan önce kanıt iste: o yapı en az iki farklı görevde
+doğru kullanılmış olmalı.
+
+Seviye dosyası (§1.6) o seviyenin varsayılan merdivenini ve gün dağılımını
+veriyor; oradan başla, kişiye göre eğ.
+
+### `wordPool` — havuz envanteri (gelen pakette)
+
+Kullanıcının isteği: *"Havuzla öğretmeni entegre etmemiz lazım, havuz
+öğretmenden ayrı hareket etmesin."*
+
+Gelen pakette `wordPool` var: `{ level, total, seen, mastered, remaining,
+daysOfMaterial, struggling[] }`. Kelime seçerken **buraya bak**:
+
+- `remaining` azalıyorsa (30 günün altına indiyse) `note` içinde söyle;
+  havuzun büyütülmesi gerekir.
+- `struggling` listesindekilere **geri dön** — yeni kelime vermek kolay,
+  oturmayanı oturtmak öğretmenlik.
+- ⚠️ Kapalı seviyelerde (şimdilik A1) havuzda **olmayan** kelime kullanıcıya
+  hiç gösterilmiyor. Havuz dışına çıkman gerekiyorsa `targetWords` öğesine
+  `"level": "<seviye>"` yazarak kefalet ver. Kefalet yalnızca cetvelin
+  **tanımadığı** kelimeler için geçer; bilinen bir üst seviye kelimesini
+  (örn. `excited` = A2) kefaletle A1'e sokamazsın.
 
 **Nasıl karar vereceksin:**
 

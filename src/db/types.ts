@@ -7,6 +7,7 @@
  */
 
 import type { CardStage } from '../core/cardcheck';
+import type { Curriculum } from '../core/curriculum';
 import type { LevelSizing } from '../core/level';
 
 /**
@@ -112,6 +113,13 @@ export interface Card {
   accepted?: string[];
   /** Kartın geldiği günün teması — kart dizilimi temaya göre sıralanıyor */
   theme?: string;
+  /**
+   * Öğretmenin bu kelime için verdiği seviye kefaleti.
+   *
+   * Cetvelin tanımadığı kelimeleri kapalı seviyede (A1) geçirir. Bilinen üst
+   * seviye kelimeleri geçirmez. Bkz. `DailyLesson.targetWords[].level`.
+   */
+  teacherLevel?: string;
   /** Son cevabın sonucu — öğretmene giden rapora giriyor */
   lastResult?: 'correct' | 'close' | 'wrong';
   /**
@@ -242,6 +250,22 @@ export interface DailyLesson {
     meaning: string;
     example?: string;
     accepted?: string[];
+    /**
+     * **Öğretmenin kefaleti** — "bu kelime bu seviyeye uygundur".
+     *
+     * ⚠️ Havuz A1'de kapalı liste oldu: havuzda olmayan kelime gösterilmiyor
+     * (`KAPALI_SEVIYELER`). Bu kural seviye üstü sızıntıyı kesti ama yeni bir
+     * sorun doğurdu — öğretmen A1'e uygun ama havuzda bulunmayan bir kelime
+     * seçtiğinde (içeriğe özel `lap`, `pit stop` gibi) kelime sessizce
+     * eleniyordu. Kullanıcının kuralı: *"havuz öğretmenden ayrı hareket
+     * etmesin."*
+     *
+     * Kefalet dar kapsamlı: **cetvelin tanımadığı** kelimeler için geçerli.
+     * Cetvel bir kelimenin üst seviye olduğunu **biliyorsa** kefalet onu
+     * geçiremez — "to be excited" A2 olarak bilindiği için öğretmen ne derse
+     * desin A1'e gelmez. Yani öğretmen havuzu genişletebilir, çiğneyemez.
+     */
+    level?: string;
   }>;
   /** Öğretmenin yazdığı okuma parçası (özgün, seviyeye uygun) */
   passage?: {
@@ -298,6 +322,18 @@ export interface TeacherPlan {
    * bakıp burayı günceller. Boş bırakılan alanlar tabloda kalır.
    */
   sizing?: LevelSizing;
+  /**
+   * **Seviye içi müfredat — öğretmenin yol haritası.**
+   *
+   * Kullanıcının kuralı: *"Öğretmen seviyeye uygun müfredat belirlemeli,
+   * A2'ye geçene kadar performansa bağlı gün belirlemeli ve hazırlanan
+   * müfredatla beraber gün sayısı eşleşmeli."*
+   *
+   * Hedef gün sayısı artık `remainingHours`'tan değil buradan çıkıyor:
+   * kalan basamakların ders günü toplamı, kullanıcının haftalık çalışma
+   * gününe bölünüyor. Bkz. `src/core/curriculum.ts`.
+   */
+  curriculum?: Curriculum;
   updatedAt: string;
 }
 

@@ -11,6 +11,11 @@
  * Saf TypeScript: ağ, veritabanı, AI çağrısı yok.
  */
 
+import {
+  activeCurriculum,
+  calendarDaysFor,
+  curriculumProgress,
+} from './curriculum';
 import { levelIndex, nextLevel, toLevel } from './level';
 import { addDays, toISODate } from './srs';
 import type { AppData, TargetPoint, TeacherScore } from '../db/types';
@@ -165,6 +170,100 @@ export function measureMomentum(data: AppData, today: Date = new Date()): Moment
 
 /* -------------------------------------------------------- hedef tahmini */
 
+/**
+ * Son 4 haftada **haftada kaç gün** çalışıldı.
+ *
+ * Müfredat "ders günü" cinsinden konuşuyor; takvim gününe çevirmek için bu
+ * lazım. Dakika değil **gün** sayıyoruz: 3 dakikalık bir oturum da o günü
+ * çalışılmış yapar, müfredat basamağı dakikayla değil günle ilerliyor.
+ */
+export function weeklyActiveDays(data: AppData, today: Date = new Date()): number {
+  const start = toISODate(addDays(today, -28));
+  const gunler = new Set(
+    data.sessions.filter((s) => s.date >= start).map((s) => s.date)
+  );
+  if (gunler.size === 0) return 0;
+
+  /** Kullanıcı 4 haftadır yoksa bölen 4 değil, gerçekten var olduğu süre */
+  const enEski = [...gunler].sort()[0];
+  const gecenGun = Math.max(
+    1,
+    Math.round((new Date(toISODate(today)).getTime() - new Date(enEski).getTime()) / 86400000) + 1
+  );
+  const hafta = Math.max(1, gecenGun / 7);
+  return Math.min(7, gunler.size / hafta);
+}
+
+/**
+ * Müfredattan çıkan hedef tahmini.
+ *
+ * Hedef seviye **her zaman bir üst basamak** — müfredat o seviyenin
+ * müfredatı, bittiğinde varılan yer orası. `plan.targetLevel` iki basamak
+ * yukarıyı gösteriyorsa dinlenmiyor; ekranda "A1 → B2, 540 gün" yazmasının
+ * sebebi buydu.
+ */
+function curriculumTarget(
+  data: AppData,
+  today: Date,
+  previousDaysRemaining?: number
+): TargetEstimate | null {
+  const mufredat = activeCurriculum(data.profile.level, data.plan?.curriculum);
+  if (!mufredat) return null;
+
+  const ilerleme = curriculumProgress(mufredat);
+  if (ilerleme.total === 0) return null;
+
+  const hedef = nextLevel(toLevel(data.profile.level));
+  if (!hedef) return null;
+
+  const haftalikGun = weeklyActiveDays(data, today);
+  const olculdu = haftalikGun > 0;
+  /**
+   * Yeni kullanıcıda ölçüm yok; öğretmenin beklediği tempo, o da yoksa
+   * kullanıcının kendi tarifi (hafta içi + hafta sonu ≈ 5 gün) kullanılıyor.
+   */
+  const kullanilan = olculdu ? haftalikGun : 5;
+
+  let daysRemaining = calendarDaysFor(ilerleme.remainingLessonDays, kullanilan);
+  if (daysRemaining <= 0) daysRemaining = 1;
+
+  /** Ani sıçramayı yumuşat — hedef her gün zıplarsa anlamını yitirir */
+  if (previousDaysRemaining !== undefined && previousDaysRemaining > 0) {
+    const maxShift = Math.max(2, previousDaysRemaining * 0.25);
+    const diff = daysRemaining - previousDaysRemaining;
+    if (Math.abs(diff) > maxShift) {
+      daysRemaining = Math.round(previousDaysRemaining + Math.sign(diff) * maxShift);
+    }
+  }
+
+  const aktifGun = new Set(
+    data.sessions.filter((s) => s.date >= toISODate(addDays(today, -28))).map((s) => s.date)
+  ).size;
+  const confidence: TargetEstimate['confidence'] =
+    aktifGun >= 14 ? 'high' : aktifGun >= 5 ? 'medium' : 'low';
+
+  const basamak = ilerleme.step;
+  const note = !olculdu
+    ? `Müfredatta ${ilerleme.remainingLessonDays} ders günü kaldı. Bu tahmin haftada 5 gün çalışmaya göre; sen çalıştıkça kendi tempona göre yeniden hesaplanacak.`
+    : `Müfredatta ${ilerleme.remainingLessonDays} ders günü kaldı ve haftada ${haftalikGun.toFixed(1)} gün çalışıyorsun. Her gün çalışırsan ${ilerleme.remainingLessonDays} günde biter.`;
+
+  return {
+    level: hedef,
+    date: toISODate(addDays(today, daysRemaining)),
+    daysRemaining,
+    weeklyMinutes: Math.round(actualWeeklyMinutes(data, today)),
+    confidence,
+    note,
+    curriculum: {
+      done: ilerleme.done,
+      total: ilerleme.total,
+      lessonDaysLeft: ilerleme.remainingLessonDays,
+      stepTitle: basamak?.title,
+      stepGoal: basamak?.goal,
+    },
+  };
+}
+
 export interface TargetEstimate {
   /** Hedeflenen seviye */
   level: string;
@@ -177,6 +276,18 @@ export interface TargetEstimate {
   confidence: 'low' | 'medium' | 'high';
   /** Kullanıcıya gösterilecek açıklama */
   note: string;
+  /**
+   * Tahmin müfredattan çıktıysa müfredatın durumu — ekranda "A1 · 4/11
+   * basamak · şu an: geniş zaman" diye gösteriliyor. Saat modelinden gelen
+   * tahminlerde yok.
+   */
+  curriculum?: {
+    done: number;
+    total: number;
+    lessonDaysLeft: number;
+    stepTitle?: string;
+    stepGoal?: string;
+  };
 }
 
 /**
@@ -231,6 +342,22 @@ export function estimateTarget(
   today: Date = new Date(),
   previousDaysRemaining?: number
 ): TargetEstimate | null {
+  /**
+   * **Önce müfredat.**
+   *
+   * ⚠️ Eski model `remainingHours` × tempo idi ve ekranda **540 / 760 gün**
+   * gibi sayılar üretiyordu. Sayı hatalı değildi, **soru** hatalıydı: bir
+   * seviye için 10-400 saat tahmini, haftada ~80 dakikalık bir tempoyla
+   * 2000 günü aşıyor. Kullanıcının tepkisi haklıydı: *"o gün sayılarında
+   * abartı oluyordu, 760 günler falan geliyordu."*
+   *
+   * Yeni soru: **bir sonraki seviyeye kaç ders günü kaldı?** Cevabı
+   * müfredat veriyor ve sayı denetlenebilir hâle geliyor — söz verilen gün
+   * kadar çalışan gerçekten seviye atlıyor. Bkz. `src/core/curriculum.ts`.
+   */
+  const mufredat = curriculumTarget(data, today, previousDaysRemaining);
+  if (mufredat) return mufredat;
+
   const plan = data.plan;
   if (!plan || plan.remainingHours <= 0) return null;
 

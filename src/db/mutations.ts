@@ -1,5 +1,6 @@
 import { nextStage, type AnswerVerdict } from '../core/cardcheck';
-import { LEVELS, levelIndex, nextLevel, specOf, toLevel } from '../core/level';
+import type { Curriculum, StepStatus } from '../core/curriculum';
+import { LEVELS, levelIndex, nextLevel, specOf, toLevel, type CEFRLevel } from '../core/level';
 import { reviewCard, toISODate, type ReviewGrade } from '../core/srs';
 import { fitsLevel, wordsForLevel } from '../core/wordbank';
 import type { InboxPayload } from '../sync/github';
@@ -140,6 +141,8 @@ export interface AddCardExtras {
   accepted?: string[];
   /** Kartın geldiği günün teması */
   theme?: string;
+  /** Öğretmenin seviye kefaleti — bkz. `Card.teacherLevel` */
+  teacherLevel?: string;
 }
 
 /** Aynı kelime zaten varsa hiçbir şey yapmaz. */
@@ -177,6 +180,7 @@ export function addCard(
         stage: 1,
         accepted: extras.accepted?.length ? extras.accepted : undefined,
         theme: extras.theme,
+        teacherLevel: extras.teacherLevel,
       },
     ],
   };
@@ -811,7 +815,62 @@ function sanitizePlan(
       Math.max(1, plan.dailyNewWords || spec.maxNewWordsPerDay)
     ),
     dailyMinutes: Math.min(180, Math.max(5, plan.dailyMinutes || 20)),
+    curriculum: sanitizeCurriculum(plan.curriculum, level),
   };
+}
+
+/**
+ * Öğretmenin müfredatını süzer.
+ *
+ * Hedef gün sayısı artık **buradan** çıkıyor (`estimateTarget` →
+ * `curriculumTarget`), yani bozuk bir müfredat doğrudan ekrandaki sayıyı
+ * bozar. Eski `remainingHours` modelinde 400 saatlik tavan vardı; burada da
+ * benzer bir çerçeve olmalı:
+ *
+ *  - Seviye uyuşmuyorsa müfredat **yok sayılır** — eski seviyenin merdivenini
+ *    göstermek yanlış hedef göstermektir.
+ *  - Basamak sayısı 3-25 arası. Tek basamaklı "müfredat" müfredat değildir;
+ *    25'ten fazlası ekranda takip edilemez.
+ *  - Basamak başına 1-20 ders günü. 60 günlük tek basamak, ilerleme hissini
+ *    tamamen öldürür.
+ *  - Toplam en fazla 180 ders günü. Bir seviyeye bundan fazlasını ayırmak,
+ *    kullanıcının şikâyet ettiği "760 gün" tablosuna geri dönmektir.
+ *  - En fazla **bir** basamak `active` olabilir; ilki kalır.
+ */
+function sanitizeCurriculum(
+  curriculum: Curriculum | undefined,
+  level: CEFRLevel
+): Curriculum | undefined {
+  if (!curriculum || !Array.isArray(curriculum.steps)) return undefined;
+  if (toLevel(curriculum.level) !== level) return undefined;
+  if (curriculum.steps.length < 3 || curriculum.steps.length > 25) return undefined;
+
+  let aktifGorulen = false;
+  let toplam = 0;
+
+  const steps = curriculum.steps.map((s, i) => {
+    const days = Math.min(20, Math.max(1, Math.round(Number(s.days) || 5)));
+    toplam += days;
+    const durum: StepStatus =
+      s.status === 'done' || s.status === 'active' || s.status === 'todo'
+        ? s.status
+        : 'todo';
+    const status: StepStatus =
+      durum === 'active' && aktifGorulen ? 'todo' : durum;
+    if (status === 'active') aktifGorulen = true;
+
+    return {
+      id: String(s.id || `${level.toLowerCase()}-${i + 1}`),
+      title: String(s.title || '').slice(0, 80),
+      goal: String(s.goal || '').slice(0, 160),
+      days,
+      status,
+    };
+  });
+
+  if (toplam > 180) return undefined;
+
+  return { level, steps, updatedAt: curriculum.updatedAt };
 }
 
 /**
@@ -887,6 +946,7 @@ export function applyInbox(
       next = addCard(next, w.word, w.meaning, w.example ?? null, null, today, {
         accepted: w.accepted,
         theme: inbox.lesson.theme,
+        teacherLevel: w.level,
       });
     }
   }
