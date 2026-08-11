@@ -28,6 +28,7 @@ import {
   CUSTOM_VALUE,
   activeSteps,
   emptyTastes,
+  sanitizeTastes,
   type TasteStep,
 } from '../src/core/tastes';
 import { updateProfile } from '../src/db/mutations';
@@ -56,12 +57,17 @@ export default function InterestsScreen() {
       const next = list.includes(value)
         ? list.filter((v) => v !== value)
         : [...list, value];
+      /**
+       * ⚠️ İlgi alanı kaldırılınca **ona bağlı alt seçim de silinmeli.**
+       *
+       * Kullanıcının şikâyeti: *"oyun seçiyorum, örnek yine spor veriyor."*
+       * Önce Spor → Futbol seçilmiş, sonra Spor kaldırılıp Oyun seçilmişti;
+       * `sports: ['futbol']` veride kalıyordu ve konu seçen taraf onu hâlâ
+       * geçerli sayıyordu. Sorulmayan bir sorunun cevabı veride durmamalı.
+       */
+      const temiz = sanitizeTastes({ ...base, [step.field]: next });
       return updateProfile(current, {
-        tastes: {
-          ...base,
-          [step.field]: next,
-          updatedAt: new Date().toISOString(),
-        },
+        tastes: { ...temiz, updatedAt: new Date().toISOString() },
       });
     });
   }

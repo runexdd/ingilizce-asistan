@@ -18,6 +18,7 @@
 import { dayNumber } from './reading';
 import { LEVELS, levelIndex, type CEFRLevel } from './level';
 import { keysFromNote, noteSubject } from './tastematch';
+import { sanitizeTastes } from './tastes';
 import type { Tastes } from '../db/types';
 
 type PromptSet = Record<CEFRLevel, string[]>;
@@ -355,8 +356,17 @@ const WRITE_FRAMES: Record<CEFRLevel, (subject: string) => string> = {
 };
 
 /** Kullanıcının bütün zevk seçimleri tek kümede — serbest metin dahil */
-function tasteKeys(tastes: Tastes | undefined): Set<string> {
-  if (!tastes) return new Set();
+function tasteKeys(ham: Tastes | undefined): Set<string> {
+  if (!ham) return new Set();
+  /**
+   * ⚠️ **Sahipsiz alt seçimler burada da elenir.** Ekran artık ilgi alanı
+   * kaldırılınca alt seçimi siliyor ama telefonlarda **zaten bozulmuş**
+   * kayıtlar var: Spor'u bırakıp Oyun'a geçen kullanıcının verisinde
+   * `sports: ['futbol']` duruyor ve konu günlerin yarısında futbol
+   * geliyordu. Okuma tarafında da süzmek, o kullanıcıları ilk açılışta
+   * kurtarıyor.
+   */
+  const tastes = sanitizeTastes(ham);
   return new Set([
     ...tastes.areas,
     ...tastes.music,
@@ -409,7 +419,14 @@ function topicsFor(tastes: Tastes | undefined): TasteTopic[] {
  */
 const UST_ALAN_ALTLARI: Record<string, string[]> = {
   spor: ['futbol', 'basketbol', 'tenis', 'dovus', 'motor', 'fitness', 'kosu', 'dogaspor'],
-  dizi: ['superhero', 'scifi', 'polisiye', 'komedi', 'dram', 'animasyon', 'tarihi', 'fantastik', 'gerilim'],
+  /**
+   * ⚠️ `belgesel` buraya sonradan eklendi. Yoksa "Dizi ve film → Belgesel"
+   * seçen kullanıcı **iki bloğa birden** düşüyordu: günlerin bir kısmında
+   * "sevdiğin bir film anlat", diğer kısmında "sevdiğin bir hayvan anlat".
+   * Motor sporları için düzeltilen hatanın birebir aynısı, başka kapıdan —
+   * yeni bir alt dal eklerken bu listeyi de güncelle.
+   */
+  dizi: ['superhero', 'scifi', 'polisiye', 'komedi', 'dram', 'animasyon', 'tarihi', 'fantastik', 'gerilim', 'belgesel'],
   muzik: ['rock', 'metal', 'pop', 'rap', 'caz', 'klasik', 'blues', 'country', 'elektronik', 'akustik'],
 };
 

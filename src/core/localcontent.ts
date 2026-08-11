@@ -34,7 +34,7 @@ import type { CatalogItem } from './catalog/types';
 import { A1_CATALOG } from './catalog/a1';
 import { A1_CESIT } from './catalog/a1-cesit';
 import { A1_MUZIK } from './catalog/a1-muzik';
-import { labelOf } from './tastes';
+import { labelOf, sanitizeTastes } from './tastes';
 import { dayNumber } from './reading';
 import { keysFromNote } from './tastematch';
 import { isTooHardFor, levelOfWord } from './wordbank';
@@ -418,9 +418,16 @@ const CATALOG: CatalogItem[] = [
  * `keysFromNote` yazdığını en yakın anahtarlara bağlıyor (tiyatro →
  * dizi + dram); bağlayamazsa hiçbir şey uydurmuyor.
  */
-function tasteKeys(tastes: Tastes | undefined): Map<string, number> {
+function tasteKeys(ham: Tastes | undefined): Map<string, number> {
   const w = new Map<string, number>();
-  if (!tastes) return w;
+  if (!ham) return w;
+  /**
+   * ⚠️ İlgi alanı kaldırıldığı hâlde veride kalmış alt seçimler elenir —
+   * yoksa Spor'u bırakıp Oyun'a geçen kullanıcıya spor içeriği gelmeye
+   * devam ediyor. Aynı süzgeç `prompts.ts` içinde de var; kural
+   * `tastes.ts` → `sanitizeTastes` içinde **tek yerde** tanımlı.
+   */
+  const tastes = sanitizeTastes(ham);
 
   /** En yüksek ağırlık kazanır — bir anahtar iki yerden gelirse güçlüsü sayılır */
   const ekle = (values: string[], agirlik: number) => {

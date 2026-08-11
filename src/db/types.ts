@@ -20,9 +20,13 @@ import type { LevelSizing } from '../core/level';
  * veriyor — "metal" ile "metal müzik" ayrı şeyler sanılmıyor.
  */
 export interface Tastes {
-  /** İlgi alanları: 'muzik', 'dizi', 'spor', 'oyun'... */
+  /**
+   * İlgi alanları: 'dizi', 'spor', 'oyun', 'teknoloji'...
+   * ('muzik' listeden kaldırıldı — müzik türü herkese ayrıca soruluyor.
+   * Eski kayıtlarda hâlâ bulunabilir, bkz. `tastes.ts` → `ESKI_ETIKETLER`.)
+   */
   areas: string[];
-  /** Müzik türleri — sadece 'muzik' seçiliyse sorulur */
+  /** Müzik türleri — **herkese** sorulur, ilgi alanına bağlı değil */
   music: string[];
   /** Dizi/film türleri */
   screen: string[];

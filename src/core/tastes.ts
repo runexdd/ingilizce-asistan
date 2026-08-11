@@ -62,8 +62,21 @@ export const TASTE_STEPS: TasteStep[] = [
     field: 'areas',
     question: 'Neyle ilgilenirsin?',
     why: 'Öğretmen günlük içeriği ve sohbet konusunu buradan seçecek. Birkaç tane seçebilirsin.',
+    /**
+     * ⚠️ **"Müzik" burada YOK — bilerek.**
+     *
+     * Müzik türü bir sonraki adımda **herkese** soruluyor (zorunlu). İkisi
+     * bir arada durunca aynı şey iki kez soruluyordu ve kullanıcı haklı
+     * olarak karıştı: *"2. seçenekte her türlü müziği getiriyorduk, müziği
+     * ilk kısımdan çıkaralım, zaten 2. olarak hep gelmesini istiyoruz."*
+     *
+     * Bedeli bilinerek kabul edildi: katalogda `tastes: ['muzik']` etiketli
+     * iki **izleme** içeriği (sözlü şarkı videosu, müzisyen röportajı) artık
+     * yalnızca serbest metinden ("konser", "gitar", "şarkı") eşleşiyor. Tür
+     * anahtarlarını o içeriklere eklemek çözüm DEĞİL: müzik türü zorunlu
+     * cevap olduğu için herkes izleme kanalında da müzik videosu alırdı.
+     */
     options: withCustom([
-      { value: 'muzik', label: '🎵  Müzik' },
       { value: 'dizi', label: '📺  Dizi ve film' },
       { value: 'spor', label: '⚽  Spor' },
       { value: 'oyun', label: '🎮  Oyun' },
@@ -159,9 +172,57 @@ export function activeSteps(tastes: Tastes): TasteStep[] {
   );
 }
 
+/**
+ * Bir alt alan hangi ilgi alanına bağlı — **tek kaynak**.
+ *
+ * `TASTE_STEPS`'ten türetiliyor ki iki yerde iki farklı liste tutulmasın;
+ * bu projede "aynı kuralı iki yere yazmak" tekrar tekrar hataya yol açtı.
+ */
+export const ALT_ALAN_USTU: Record<string, string> = Object.fromEntries(
+  TASTE_STEPS.filter((s) => s.requiresArea).map((s) => [s.field, s.requiresArea!])
+);
+
+/**
+ * **Sahipsiz alt seçimleri temizler.**
+ *
+ * ⚠️ Kullanıcının bildirdiği hatanın kök sebebi: *"oyun seçiyorum, örnek yine
+ * spor veriyor."* Kullanıcı önce Spor → Futbol seçiyor, sonra ilgi
+ * alanlarından Spor'u kaldırıp Oyun'u seçiyor. `sports: ['futbol']` veride
+ * **kalıyor** — hiçbir yer temizlemiyordu — ve konu seçen taraf onu hâlâ
+ * geçerli bir zevk sayıyordu. Sonuç: günlerin yarısında futbol konusu.
+ *
+ * Hem yazarken (ekran) hem okurken (konu ve içerik seçimi) uygulanıyor:
+ * ekran düzeltmesi yeni veriyi doğru tutar, buradaki süzgeç **hâlihazırda
+ * bozulmuş kayıtları** da kurtarır. Kullanıcıdan veri silmesini istemek
+ * çözüm değil.
+ *
+ * Müzik bilerek muaf: müzik türü artık bir ilgi alanına bağlı değil,
+ * herkese soruluyor.
+ */
+export function sanitizeTastes(tastes: Tastes): Tastes {
+  let next = tastes;
+  for (const [field, area] of Object.entries(ALT_ALAN_USTU)) {
+    const key = field as 'screen' | 'sports';
+    const list = next[key];
+    if (list?.length && !next.areas.includes(area)) {
+      next = { ...next, [key]: [] };
+    }
+  }
+  return next;
+}
+
 export function emptyTastes(): Tastes {
   return { areas: [], music: [], screen: [], sports: [], other: [] };
 }
+
+/**
+ * Listeden kaldırılmış ama **kullanıcıların verisinde duran** anahtarlar.
+ *
+ * `muzik` ilgi alanları sorusundan çıkarıldı; daha önce seçmiş olanların
+ * kaydında duruyor. Etiketi burada olmasaydı ekranda ve öğretmene giden
+ * metinde ham hâliyle ("muzik") görünürdü.
+ */
+const ESKI_ETIKETLER: Record<string, string> = { muzik: 'Müzik' };
 
 /** Bir anahtarın Türkçe etiketi — ekranda özet göstermek için */
 export function labelOf(value: string): string {
@@ -170,7 +231,7 @@ export function labelOf(value: string): string {
     // Etiketin başındaki emojiyi at, sadece kelime kalsın
     if (found) return found.label.replace(/^[^\p{L}]+/u, '').trim();
   }
-  return value;
+  return ESKI_ETIKETLER[value] ?? value;
 }
 
 /**
