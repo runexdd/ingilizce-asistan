@@ -14,7 +14,6 @@
  * kullanıcının ayrıca "şimdi senkronla"ya basması gerekmiyor.
  */
 
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Pressable,
@@ -33,6 +32,7 @@ import {
 } from '../src/core/tastes';
 import { updateProfile } from '../src/db/mutations';
 import { useStore } from '../src/db/store';
+import { goBack } from '../src/ui/BackButton';
 import { colors, radius, spacing } from '../src/ui/theme';
 
 export default function InterestsScreen() {
@@ -84,7 +84,7 @@ export default function InterestsScreen() {
   function next() {
     saveNote();
     if (isLast) {
-      router.back();
+      goBack();
       return;
     }
     setIndex((i) => i + 1);
@@ -94,7 +94,7 @@ export default function InterestsScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.title}>Hazır</Text>
-        <Pressable style={styles.primary} onPress={() => router.back()}>
+        <Pressable style={styles.primary} onPress={goBack}>
           <Text style={styles.primaryText}>Kapat</Text>
         </Pressable>
       </View>
@@ -151,7 +151,10 @@ export default function InterestsScreen() {
       <View style={styles.footer}>
         {index > 0 ? (
           <Pressable style={styles.secondary} onPress={() => setIndex((i) => i - 1)}>
-            <Text style={styles.secondaryText}>Geri</Text>
+            {/* Başlıkta artık ekrandan çıkaran bir "Geri" var; bu düğme
+                ekrandan çıkarmıyor, bir önceki soruya dönüyor. İkisi aynı adı
+                taşırsa kullanıcı hangisinin çıkış olduğunu bilemez. */}
+            <Text style={styles.secondaryText}>← Önceki soru</Text>
           </Pressable>
         ) : null}
         <Pressable style={styles.primary} onPress={next}>

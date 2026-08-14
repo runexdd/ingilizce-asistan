@@ -12,7 +12,6 @@
  * ki yol kapanmasın (o durumda cevap yine öğretmene gidiyor).
  */
 
-import { router } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -38,6 +37,7 @@ import {
 } from '../src/core/speechInput';
 import { saveLevelExam } from '../src/db/mutations';
 import { useStore } from '../src/db/store';
+import { goBack } from '../src/ui/BackButton';
 import { colors, radius, spacing } from '../src/ui/theme';
 
 export default function LevelExamScreen() {
@@ -72,7 +72,7 @@ export default function LevelExamScreen() {
           Önce yerleştirme sınavını yap; seviyen belirlendikten sonra o seviyeye
           özel puanlama sınavı açılır.
         </Text>
-        <Pressable style={styles.primary} onPress={() => router.back()}>
+        <Pressable style={styles.primary} onPress={goBack}>
           <Text style={styles.primaryText}>Geri dön</Text>
         </Pressable>
       </View>
@@ -124,7 +124,7 @@ export default function LevelExamScreen() {
           </Text>
         </View>
 
-        <Pressable style={styles.primary} onPress={() => router.back()}>
+        <Pressable style={styles.primary} onPress={goBack}>
           <Text style={styles.primaryText}>Bitir</Text>
         </Pressable>
         <View style={{ height: spacing.xl }} />

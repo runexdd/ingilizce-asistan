@@ -19,7 +19,6 @@
  * görünüyor. Bu takas kullanıcıya ekranda da yazılıyor.
  */
 
-import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -50,6 +49,7 @@ import {
 } from '../src/db/mutations';
 import { activeSizing, getActiveConversation } from '../src/db/selectors';
 import { useStore } from '../src/db/store';
+import { goBack } from '../src/ui/BackButton';
 import { colors, radius, spacing } from '../src/ui/theme';
 
 export default function ConversationScreen() {
@@ -63,8 +63,12 @@ export default function ConversationScreen() {
    */
   const active = useMemo(() => getActiveConversation(data), [data]);
 
+  /** Bırakılan sohbetler atlanır — ekran her zaman yürüyen kayda bakar */
   const record = useMemo(
-    () => (data.conversations ?? []).filter((c) => c.date === today).at(-1),
+    () =>
+      (data.conversations ?? [])
+        .filter((c) => c.date === today && !c.abandoned)
+        .at(-1),
     [data.conversations, today]
   );
 
@@ -110,12 +114,23 @@ export default function ConversationScreen() {
   /** Cevap mikrofonla mı verildi — kaydın istatistiğine giriyor */
   const usedMic = useRef(false);
 
+  /**
+   * Tur sayacını kayda bağla.
+   *
+   * ⚠️ Sadece "yarıda kalmışsa devam et" yetmiyor. Kullanıcı sohbeti bırakıp
+   * yenisini isteyince yeni bir kayıt açılıyor; ekran açık kaldıysa sayaç
+   * eski sohbetin turunda takılı kalır ve yeni sohbet ortasından başlar.
+   * Kayıt kimliği değiştiğinde sayaç o kaydın kendi turuna çekiliyor.
+   */
+  const boundRecordId = useRef<string | null>(null);
   useEffect(() => {
-    // Yarıda kalmış sohbet varsa kaldığı turdan devam
-    if (record && turnIndex === 0 && record.turnsDone > 0) {
-      setTurnIndex(record.turnsDone);
-    }
-  }, [record, turnIndex]);
+    if (!record || boundRecordId.current === record.id) return;
+    boundRecordId.current = record.id;
+    setTurnIndex(record.turnsDone);
+    setFollowedUp(false);
+    setPending(null);
+    setText('');
+  }, [record]);
 
   useEffect(() => () => {
     micRef.current?.stop();
@@ -334,7 +349,7 @@ export default function ConversationScreen() {
               uygulamanın burada söyledikleri sadece yazım ve noktalama; üslup
               ve doğallık öğretmenin işi.
             </Text>
-            <Pressable style={styles.primaryButton} onPress={() => router.back()}>
+            <Pressable style={styles.primaryButton} onPress={goBack}>
               <Text style={styles.primaryButtonText}>Kapat</Text>
             </Pressable>
           </View>

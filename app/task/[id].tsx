@@ -31,6 +31,7 @@ import {
 import { addCard, recordSession, saveTaskResponse } from '../../src/db/mutations';
 import { activeLesson, activeSizing, isContentStale } from '../../src/db/selectors';
 import { useStore } from '../../src/db/store';
+import { BackToTodayButton } from '../../src/ui/BackButton';
 import { TappableText } from '../../src/ui/TappableText';
 import { colors, radius, spacing } from '../../src/ui/theme';
 
@@ -347,18 +348,21 @@ function ReadingTask() {
             </Text>
           </Pressable>
         ) : (
-          <View style={styles.notice}>
-            <Text style={styles.noticeTitle}>
-              {lessonQuestions.length > 0
-                ? `${lessonCorrect} / ${lessonQuestions.length} doğru`
-                : 'Tamamlandı ✅'}
-            </Text>
-            <Text style={styles.noticeText}>
-              Bugünün kelimeleri bu metinde geçiyordu. Aynı kelimeler yazma ve
-              konuşma görevlerinde de karşına çıkacak — beş farklı yerde görmek,
-              beş kez ezberlemekten kalıcı.
-            </Text>
-          </View>
+          <>
+            <View style={styles.notice}>
+              <Text style={styles.noticeTitle}>
+                {lessonQuestions.length > 0
+                  ? `${lessonCorrect} / ${lessonQuestions.length} doğru`
+                  : 'Tamamlandı ✅'}
+              </Text>
+              <Text style={styles.noticeText}>
+                Bugünün kelimeleri bu metinde geçiyordu. Aynı kelimeler yazma ve
+                konuşma görevlerinde de karşına çıkacak — beş farklı yerde
+                görmek, beş kez ezberlemekten kalıcı.
+              </Text>
+            </View>
+            <BackToTodayButton />
+          </>
         )}
       </ScrollView>
     );
@@ -392,6 +396,7 @@ function ReadingTask() {
         >
           <Text style={styles.buttonText}>Okudum, tamamlandı</Text>
         </Pressable>
+        <BackToTodayButton />
       </ScrollView>
     );
   }
@@ -403,6 +408,7 @@ function ReadingTask() {
           Okuma içeriği bulunamadı. Öğretmen bir sonraki turunda sana
           seviyene uygun bir metin gönderecek.
         </Text>
+        <BackToTodayButton />
       </View>
     );
   }
@@ -470,16 +476,19 @@ function ReadingTask() {
           <Text style={styles.buttonText}>Kontrol et</Text>
         </Pressable>
       ) : (
-        <View style={styles.notice}>
-          <Text style={styles.noticeTitle}>
-            {correctCount} / {passage.questions.length} doğru
-          </Text>
-          <Text style={styles.noticeText}>
-            {correctCount === passage.questions.length
-              ? 'Metni tam anlamışsın. Bir sonraki okuma bir tık zorlaşacak.'
-              : 'Yanlış cevapladıklarında doğru şık yeşil işaretlendi — metne dönüp o kısmı tekrar oku.'}
-          </Text>
-        </View>
+        <>
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>
+              {correctCount} / {passage.questions.length} doğru
+            </Text>
+            <Text style={styles.noticeText}>
+              {correctCount === passage.questions.length
+                ? 'Metni tam anlamışsın. Bir sonraki okuma bir tık zorlaşacak.'
+                : 'Yanlış cevapladıklarında doğru şık yeşil işaretlendi — metne dönüp o kısmı tekrar oku.'}
+            </Text>
+          </View>
+          <BackToTodayButton />
+        </>
       )}
     </ScrollView>
   );
@@ -754,15 +763,23 @@ function TargetWords({ words }: { words: Array<{ word: string; meaning: string }
   );
 }
 
+/**
+ * Görev bitince ekranda yapacak bir şey kalmıyor — o yüzden çıkış kapısı
+ * burada da duruyor. Başlıktaki geri tuşu zaten var; buradaki, işi bitiren
+ * kişinin gözünün gittiği yerde.
+ */
 function SavedNotice() {
   return (
-    <View style={styles.notice}>
-      <Text style={styles.noticeTitle}>Kaydedildi ✅</Text>
-      <Text style={styles.noticeText}>
-        Birkaç saniye içinde kendiliğinden öğretmene gidiyor. Bilgisayardaki
-        nöbetçi öğretmeni çalıştırınca düzeltmesi hazırlanıp buraya dönecek.
-      </Text>
-    </View>
+    <>
+      <View style={styles.notice}>
+        <Text style={styles.noticeTitle}>Kaydedildi ✅</Text>
+        <Text style={styles.noticeText}>
+          Birkaç saniye içinde kendiliğinden öğretmene gidiyor. Bilgisayardaki
+          nöbetçi öğretmeni çalıştırınca düzeltmesi hazırlanıp buraya dönecek.
+        </Text>
+      </View>
+      <BackToTodayButton />
+    </>
   );
 }
 

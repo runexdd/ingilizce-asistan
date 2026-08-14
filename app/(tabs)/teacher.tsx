@@ -121,7 +121,15 @@ export default function TeacherScreen() {
     [data]
   );
   const conversationPlan = activeConversation.plan;
-  const todayConversation = (data.conversations ?? []).find((c) => c.date === today);
+  /** Bırakılan kayıtlar bugünün sohbeti sayılmaz (`nextConversationVariant`) */
+  const todayConversation = (data.conversations ?? []).find(
+    (c) => c.date === today && !c.abandoned
+  );
+  /** Kaçıncı sohbette olduğu — "değişti mi" sorusunun ekrandaki cevabı */
+  const conversationNo =
+    (data.conversationVariant?.date === today
+      ? data.conversationVariant.index
+      : 0) + 1;
   const reviewed = (data.conversations ?? []).filter((c) => c.review).slice(-1)[0];
 
   /**
@@ -339,6 +347,28 @@ export default function TeacherScreen() {
             </View>
           ) : null}
 
+          {/**
+            * ⚠️ **Değişen şeyi göster.** Kutu yalnızca `topic` + `intro` +
+            * `targetWords` yazıyordu; yerel sohbette bu üçü varyanttan
+            * bağımsız (konu = günün içeriğinin başlığı). "Başka bir sohbet
+            * ver"e basınca turlar gerçekten değişiyor ama ekranda tek piksel
+            * kımıldamıyordu — kullanıcı haklı olarak *"sohbet
+            * değiştirilemiyor"* dedi. Ölçüm: 6 varyant, 6 farklı tur dizisi,
+            * 1 tane başlık.
+            *
+            * İlk soru sohbetin kimliği gibidir; onu göstermek "değişti mi"
+            * sorusunu bakışta cevaplıyor.
+            */}
+          <View style={styles.firstTurnBox}>
+            <Text style={styles.firstTurnLabel}>
+              {conversationNo}. sohbet · {conversationPlan.turns.length} tur ·
+              ilk soru
+            </Text>
+            <Text style={styles.firstTurnText}>
+              {conversationPlan.turns[0]?.say ?? conversationPlan.closing}
+            </Text>
+          </View>
+
           {todayConversation?.finished ? (
             <View style={styles.doneBanner}>
               <Text style={styles.doneBannerText}>
@@ -365,19 +395,22 @@ export default function TeacherScreen() {
             * "Başka bir sohbet ver" — kullanıcının isteği: *"hep sınırlı rol
             * dönmesini istemiyorum."*
             *
-            * ⚠️ Yalnızca sohbet **başlamadan** görünüyor. Kayıt açılırken
-            * planın ilk repliği mesajlara yazılıyor ve turlar kayıttaki
-            * sayaçla yürüyor; senaryoyu ortadan değiştirmek ekrandaki
-            * konuşmayla planı birbirinden ayırırdı.
+            * ⚠️ Eskiden sohbet **başladıysa düğme kayboluyordu.** Beğenmediği
+            * bir sohbete girmiş kullanıcı o gün boyunca orada kalıyordu.
+            * Artık başlamış sohbet bırakılabiliyor: kayıt silinmiyor,
+            * `abandoned` işaretleniyor ve verdiği cevaplar öğretmene yine
+            * gidiyor. Yalnızca **bitmiş** sohbet değiştirilemez — o günün
+            * tamamlanmış işidir.
             */}
-          {!todayConversation ||
-          (todayConversation.turnsDone === 0 && !todayConversation.finished) ? (
+          {!todayConversation?.finished ? (
             <Pressable
               style={styles.secondaryButton}
               onPress={() => update((d) => nextConversationVariant(d))}
             >
               <Text style={styles.secondaryButtonText}>
-                🔄  Başka bir sohbet ver
+                {todayConversation && todayConversation.turnsDone > 0
+                  ? '🔄  Bu sohbeti bırak, başkasını ver'
+                  : '🔄  Başka bir sohbet ver'}
               </Text>
             </Pressable>
           ) : null}
@@ -812,6 +845,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: { fontSize: 15, fontWeight: '700', color: colors.accent },
+
+  /* sohbetin ilk sorusu — "değişti mi" sorusunun ekrandaki cevabı */
+  firstTurnBox: {
+    marginTop: spacing.md,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  firstTurnLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.muted,
+    marginBottom: spacing.xs,
+  },
+  firstTurnText: { fontSize: 15, color: colors.text, lineHeight: 22 },
 
   /* içerik */
   contentType: { fontSize: 12, color: colors.muted, fontWeight: '700' },

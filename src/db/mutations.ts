@@ -701,7 +701,10 @@ export function startConversation(
    * eder; her açılışta yeni kayıt açmak günün verisini ikiye böler.
    */
   const iso = toISODate(today);
-  if (data.conversations.some((c) => c.date === iso)) return data;
+  /** Bırakılan kayıt "bugünün sohbeti" sayılmaz — yerine yenisi açılabilmeli */
+  if (data.conversations.some((c) => c.date === iso && !c.abandoned)) {
+    return data;
+  }
 
   const record: ConversationRecord = {
     id: newId('conv'),
@@ -729,38 +732,59 @@ export function startConversation(
 /**
  * "Başka bir sohbet ver" — bugünün sohbet varyantını bir ilerletir.
  *
- * ⚠️ **Sohbet başladıysa değiştirmiyoruz.** Kayıt açılırken planın ilk
- * repliği mesajlara yazılıyor ve turlar kayıttaki sayaçla yürüyor; planı
- * ortadan değiştirmek ekrandaki konuşmayla senaryoyu birbirinden ayırır.
- * Bu yüzden düğme yalnızca sohbet başlamadan önce iş görüyor.
+ * ## ⚠️ Bu düğme iki kez "çalışmıyor" diye geri geldi; ikisi de farklı sebep
+ *
+ * **1. tur:** ölçüt "bugün kayıt var mı" idi. Sohbet ekranına bir kez girmek
+ * kaydı açtığı için düğme o günlük tamamen kayboluyordu.
+ *
+ * **2. tur (14 Ağustos):** düğme basılıyor, veri gerçekten değişiyor, ama
+ * ekranda **hiçbir şey değişmiyordu.** Sebebi burada değil, gösterimdeydi:
+ * kutu yalnızca `topic` + `intro` + `targetWords` gösteriyordu ve yerel
+ * sohbette bu üçü varyanttan bağımsız (konu günün içeriğinin başlığı).
+ * Değişen tek şey turlardı ve turlar ekranda görünmüyordu. Ölçüldü: 6
+ * varyantta 6 farklı tur dizisi, **1 tane konu başlığı.** Düzeltme
+ * `teacher.tsx` içinde — kutu artık ilk soruyu ve kaçıncı sohbet olduğunu
+ * yazıyor.
+ *
+ * Buradaki kural ise gevşetildi: başlamış sohbet artık **bırakılabiliyor.**
+ * Silinmiyor, `abandoned` işaretleniyor — verilen cevaplar öğretmene yine
+ * gidiyor, sadece bugünün yürüyen sohbeti olmaktan çıkıyor. Kilitli tutmanın
+ * bedeli, beğenmediği bir sohbete girmiş kullanıcının o gün boyunca orada
+ * mahsur kalmasıydı.
  */
 export function nextConversationVariant(
   data: AppData,
   today: Date = new Date()
 ): AppData {
   const iso = toISODate(today);
-  const bugunku = data.conversations.filter((c) => c.date === iso);
 
   /**
-   * **Cevap verilmişse değiştirme.** Konuşmanın ortasında senaryoyu
-   * değiştirmek verilen cevapları öksüz bırakır.
-   *
-   * ⚠️ Ama sadece *ekranı açmış* olmak cevap vermek değil. Önce "bugün kayıt
-   * varsa dokunma" deniyordu ve tarayıcıda görüldü ki sohbet ekranına bir kez
-   * girmek kaydı açıyor, düğme de o günlük tamamen kayboluyordu. Kullanıcı
-   * "sohbeti değiştir kısmı yok" derken büyük ihtimalle bunu görüyordu.
-   *
-   * Ölçüt kaydın varlığı değil, **cevap verilmiş olması**: hiç tur
-   * tamamlanmamışsa boş kayıt atılıp yenisi kuruluyor.
+   * **Bitmiş sohbet bırakılmaz.** Tamamlanan sohbet günün işidir; onu atıp
+   * yenisini açmak hem seriyi hem öğretmenin değerlendirmesini bozar.
+   * Kullanıcı yarın yeni sohbetini alır.
    */
-  const dokunulmus = bugunku.some((c) => c.turnsDone > 0 || c.finished);
-  if (dokunulmus) return data;
+  const bitmis = data.conversations.some((c) => c.date === iso && c.finished);
+  if (bitmis) return data;
 
   const current =
     data.conversationVariant?.date === iso ? data.conversationVariant.index : 0;
   return {
     ...data,
-    conversations: data.conversations.filter((c) => c.date !== iso),
+    conversations: data.conversations
+      /**
+       * Hiç cevap verilmemiş kayıt **atılıyor.** Ekranı açıp kapatmak kayıt
+       * açıyor; onları saklamak veriyi boş kabuklarla şişirir ve öğretmene
+       * "sohbet var" diye boş döküm gider.
+       */
+      .filter(
+        (c) =>
+          c.date !== iso ||
+          c.abandoned ||
+          c.messages.some((m) => m.role === 'user')
+      )
+      .map((c) =>
+        c.date === iso && !c.abandoned ? { ...c, abandoned: true } : c
+      ),
     conversationVariant: { date: iso, index: current + 1 },
   };
 }

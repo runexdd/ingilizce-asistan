@@ -112,8 +112,17 @@ const REFRESH_GAP_MS = 45 * 60 * 1000;
 const BACKOFF_MS = [0, 10 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000];
 const MAX_FAILS = 4;
 
-/** Öğretmen bu süreyi aşarsa süreç öldürülür — takılan tur nöbeti kilitlemesin */
-const TEACHER_TIMEOUT_MS = 12 * 60 * 1000;
+/**
+ * Öğretmen bu süreyi aşarsa süreç öldürülür — takılan tur nöbeti kilitlemesin.
+ *
+ * ⚠️ 12 dakikaydı ve **yetmiyordu.** 14 Ağustos'ta üç turun ikisi tam bu
+ * duvara tosladı; iki gün ders üretilmedi. Öğretmenin bir turda yazdığı şey
+ * küçük değil: 150-250 kelimelik özgün metin, 40-70 satır sözlük, 6-10 turluk
+ * sohbet + iki alternatifi, görevler, puan ve plan (`ogretmen.md` §7.5).
+ * Bunu 12 dakikaya sıkıştırmak, yarısına kadar gelmiş bir turu her seferinde
+ * çöpe atmak demekti — hem ders yok hem jeton boşa.
+ */
+const TEACHER_TIMEOUT_MS = 25 * 60 * 1000;
 
 /**
  * Kalp atışı: nöbetçi gist'e "buradayım" diye yazar.
@@ -400,8 +409,16 @@ function runTeacher() {
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      /**
+       * ⚠️ Öğretmenin kendi çıktısı **kayda geçmeli.**
+       *
+       * Burada `console.log` vardı; nöbetçi Başlangıç klasöründen penceresiz
+       * açıldığı için o çıktı hiçbir yere düşmüyordu. 14 Ağustos'ta öğretmen
+       * "çalıştı ama taslak yazmadı" dedi ve **niye** olduğunu görecek tek
+       * satır yoktu. Artık son satırlar `.watch-log.txt` içine giriyor.
+       */
       const tail = output.trim().split('\n').slice(-12).join('\n');
-      if (tail) console.log(tail);
+      if (tail) log(`öğretmenin son sözleri:\n${tail}`);
       if (code === 0) {
         log('öğretmen turu bitti.');
         resolvePromise(true);

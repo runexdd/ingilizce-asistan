@@ -158,8 +158,10 @@ export default function PlacementScreen() {
           ))}
         </View>
 
+        {/* Ekrandan çıkarmıyor, testin giriş adımına dönüyor — başlıktaki
+            "Geri" ile karışmasın diye adı buna göre. */}
         <Pressable style={styles.secondaryButton} onPress={() => setPhase('intro')}>
-          <Text style={styles.secondaryButtonText}>← Geri dön</Text>
+          <Text style={styles.secondaryButtonText}>← Önceki adım</Text>
         </Pressable>
       </ScrollView>
     );

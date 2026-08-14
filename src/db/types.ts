@@ -536,6 +536,16 @@ export interface ConversationRecord {
    * onu etkilemiyor. Yeni ayarlar yarınki sohbette geçerli olur.
    */
   plan?: ConversationPlan;
+  /**
+   * Kullanıcı bu sohbeti bırakıp başkasını istedi.
+   *
+   * ⚠️ Bırakılan sohbet **silinmiyor.** Önce siliniyordu ve verdiği cevaplar
+   * da onunla gidiyordu; oysa yarım bırakılmış bir sohbet de öğretmen için
+   * veridir (`syncState: 'pending'` kalıyor, paketle gidiyor). Sadece
+   * "bugünün yürüyen sohbeti" sayılmıyor: ekran ona dönmüyor, yerine yeni
+   * kayıt açılıyor.
+   */
+  abandoned?: boolean;
 }
 
 /**

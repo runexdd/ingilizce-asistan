@@ -85,11 +85,27 @@ export function syncSignature(data: AppData): string {
   const pendingScenarios = (data.scenarioRuns ?? []).filter(
     (r) => r.syncState !== 'synced'
   ).length;
+  /**
+   * ⚠️ **Öğretmene sorulan soru imzaya girmeli.**
+   *
+   * Girmiyordu ve sonucu şuydu: kullanıcı "Öğretmene sor"dan soru yazıyor,
+   * ekran *"cevap bekliyor"* diyor, ama imza değişmediği için uygulama ağa
+   * hiç çıkmıyordu. Soru telefonda kalıyor, gist'e ulaşmıyor, nöbetçi ortada
+   * bir iş görmüyor — kullanıcı günlerce boşuna bekliyordu. 14 Ağustos'ta
+   * ölçüldü: gist'teki paket 11 Ağustos'tan kalmaydı ve `questions: []` idi.
+   *
+   * `buildOutbox` cevaplanmamış soruları zaten gönderiyor (github.ts); eksik
+   * olan tek şey **gönderimi tetiklemekti.**
+   */
+  const pendingQuestions = (data.teacherQuestions ?? []).filter(
+    (q) => !q.answer
+  ).length;
 
   return [
     pendingTasks,
     pendingConversations,
     pendingScenarios,
+    pendingQuestions,
     data.profile.level,
     data.profile.levelScore ?? '',
     data.profile.levelChangedAt ?? '',

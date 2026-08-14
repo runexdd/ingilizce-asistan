@@ -9,13 +9,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { checkInstant } from '../src/core/instantcheck';
 import { scenarioForDay } from '../src/core/scenarios';
 import { speakEnglish } from '../src/core/speech';
 import { toISODate } from '../src/core/srs';
 import { saveScenarioRun } from '../src/db/mutations';
 import { useStore } from '../src/db/store';
+import { goBack } from '../src/ui/BackButton';
 import { colors, radius, spacing } from '../src/ui/theme';
 
 /**
@@ -39,7 +39,6 @@ import { colors, radius, spacing } from '../src/ui/theme';
  * gelir — bu, sohbet tarafındaki takasın aynısı ve ekranda söyleniyor.
  */
 export default function ScenarioScreen() {
-  const router = useRouter();
   const { data, update } = useStore();
   const [variant, setVariant] = useState(0);
   const [turn, setTurn] = useState(0);
@@ -63,7 +62,7 @@ export default function ScenarioScreen() {
           Üst seviyelerin senaryoları sırası geldiğinde yazılacak. O zamana
           kadar günün sohbeti ve görevler devam ediyor.
         </Text>
-        <Pressable style={styles.secondary} onPress={() => router.back()}>
+        <Pressable style={styles.secondary} onPress={goBack}>
           <Text style={styles.secondaryText}>← Geri dön</Text>
         </Pressable>
       </View>
@@ -209,7 +208,7 @@ export default function ScenarioScreen() {
           <Pressable style={styles.secondary} onPress={yenile}>
             <Text style={styles.secondaryText}>🔄  Başka senaryo</Text>
           </Pressable>
-          <Pressable style={styles.secondary} onPress={() => router.back()}>
+          <Pressable style={styles.secondary} onPress={goBack}>
             <Text style={styles.secondaryText}>← Geri dön</Text>
           </Pressable>
         </View>
