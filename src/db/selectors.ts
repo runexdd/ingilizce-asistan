@@ -1,5 +1,9 @@
 import type { LevelSizing } from '../core/level';
-import { buildLocalConversation, pickLocalContent } from '../core/localcontent';
+import {
+  buildLocalConversation,
+  buildTasteConversation,
+  pickLocalContent,
+} from '../core/localcontent';
 import { addDays, toISODate } from '../core/srs';
 import { isTooHardFor, isTooHardForWithVouch, levelDistance } from '../core/wordbank';
 import type {
@@ -469,14 +473,46 @@ export function getActiveContent(
 export interface ActiveConversation {
   plan: ConversationPlan;
   source: 'teacher' | 'app';
+  /**
+   * Sohbet bir izleme/dinleme ödevinin üstüne mi kuruldu.
+   *
+   * Ekran bunu **söylemek zorunda**: bağlantı kurulduysa "bitirdiğin şu şeyin
+   * üstüne", kurulmadıysa "izlersen sohbet onun üstüne döner". Görünmeyen
+   * kural kural değildir — kullanıcı bağlantıyı ancak ekranda yazarsa fark
+   * eder ve ödevi yapmanın karşılığını görür.
+   */
+  boundTo: string | null;
 }
 
 /**
- * Bugünün sohbeti. Öğretmenin bugüne yazdığı senaryo varsa o; yoksa (ya da
- * seviye değiştiyse) uygulama içeriğin üstüne bir sohbet kuruyor.
+ * Bugünün sohbeti.
  *
- * Sohbetsiz gün olmasın diye: kullanıcı *"her gün böyle bir konuşma
- * yapılsın"* dedi ve öğretmenin çalışmadığı bir gün bunu bozmamalı.
+ * ## ⚠️ Konuyu "izledin mi" sorusu belirler
+ *
+ * Kullanıcının koyduğu kural: *"diziyi izleyip çalışan onunla ilgili
+ * konuşmaya hak kazansın, diğerleri zevkleriyle ilgili konuşmaya hak
+ * kazansın."*
+ *
+ * Neden koşulsuz bağlamıyoruz: izlemediği bir bölüm üstüne sohbet ölü doğar —
+ * cevap veremez, uydurur, sıkılır. Hafta içi yoğun biri için "izlemedim" hâli
+ * istisna değil, normal durum; koşulsuz bağlamak hafta içi sohbetlerini çöpe
+ * atmak olurdu.
+ *
+ * Neden sadece zevklere de bağlamıyoruz: o zaman her gün "futbolu anlat"
+ * döner ve izlemenin bir karşılığı kalmaz.
+ *
+ * ## Sıra
+ *
+ * 1. Bugün **bitirdiği** bir izleme/dinleme içeriği varsa sohbet onun üstüne.
+ *    Öğretmenin planı zaten o içeriğe bağlıysa öğretmeninki kazanır (elle
+ *    yazılmış, daha iyi); değilse uygulama o içeriğin üstüne kurar.
+ * 2. Bitirmediyse: öğretmenin planı bir içeriğe **bağlıysa** kullanılmaz —
+ *    izlemediği şeyi konuşturmak tam da kaçındığımız şey. Bağlı değilse
+ *    (örneğin okuma metni üstüneyse) öğretmeninki kullanılır.
+ * 3. Hiçbiri değilse zevklerin üstüne sohbet (`buildTasteConversation`).
+ *
+ * Sohbetsiz gün olmuyor — kullanıcı *"her gün böyle bir konuşma yapılsın"*
+ * dedi ve bu üç yolun hepsi bir sohbetle bitiyor.
  */
 export function getActiveConversation(
   data: AppData,
@@ -487,6 +523,12 @@ export function getActiveConversation(
   /** Bugün kaçıncı sohbet isteniyor — dünün sayacı bugüne taşınmaz */
   const variant =
     data.conversationVariant?.date === iso ? data.conversationVariant.index : 0;
+
+  const items = getActiveContent(data, today).items;
+  /** Görevler sayılmaz; "izle/dinle" ödevleri sayılır */
+  const izlenebilir = items.filter((c) => c.type !== 'task');
+  /** Bitirdiği ilk içerik — sohbeti hak ettiren şey bu */
+  const bitirilen = izlenebilir.find((c) => c.done) ?? null;
 
   if (!stale && data.conversationPlan?.date === iso) {
     /**
@@ -499,21 +541,49 @@ export function getActiveConversation(
       data.conversationPlan,
       ...(data.conversationAlternatives ?? []).filter((p) => p.date === iso),
     ];
-    if (variant < teacherPlans.length) {
-      return { plan: teacherPlans[variant], source: 'teacher' };
+    const plan = variant < teacherPlans.length ? teacherPlans[variant] : null;
+    if (plan) {
+      /**
+       * Öğretmenin sohbeti hangi içeriğe bağlı — `contentTitle` bugünün
+       * izleme listesinde bir şeyle eşleşiyorsa bağlıdır. Eşleşmiyorsa
+       * (okuma metni, genel konu) bağlı sayılmaz ve kapıya takılmaz.
+       */
+      const bagli = plan.contentTitle
+        ? (izlenebilir.find((c) => c.title === plan.contentTitle) ?? null)
+        : null;
+
+      if (!bagli) return { plan, source: 'teacher', boundTo: null };
+      if (bagli.done) return { plan, source: 'teacher', boundTo: bagli.title };
+      /* Bağlı ama izlenmemiş → aşağıdaki zevk sohbetine düşülüyor */
     }
   }
 
-  const content = getActiveContent(data, today).items[0];
+  if (bitirilen) {
+    return {
+      plan: buildLocalConversation(
+        bitirilen,
+        data.profile.level,
+        activeSizing(data),
+        iso,
+        variant
+      ),
+      source: 'app',
+      boundTo: bitirilen.title,
+    };
+  }
+
+  const lesson = activeLesson(data);
   return {
-    plan: buildLocalConversation(
-      content,
+    plan: buildTasteConversation(
+      data.profile.tastes,
       data.profile.level,
       activeSizing(data),
       iso,
+      lesson?.date === iso ? lesson.targetWords.map((w) => w.word) : [],
       variant
     ),
     source: 'app',
+    boundTo: null,
   };
 }
 

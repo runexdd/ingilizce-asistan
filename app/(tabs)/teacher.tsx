@@ -359,6 +359,30 @@ export default function TeacherScreen() {
             * İlk soru sohbetin kimliği gibidir; onu göstermek "değişti mi"
             * sorusunu bakışta cevaplıyor.
             */}
+          {/**
+            * Bağlantıyı **yaz.** Kullanıcının kuralı "izleyen içerik üstüne
+            * konuşmaya hak kazanır"; kural ekranda görünmezse hak edilen şey
+            * de, eksik olan şey de fark edilmez. Bağlıysa hangi içerik,
+            * değilse ne yapınca bağlanacağı yazıyor.
+            */}
+          <View
+            style={[
+              styles.bagBox,
+              activeConversation.boundTo ? styles.bagBoxOn : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.bagText,
+                activeConversation.boundTo ? styles.bagTextOn : null,
+              ]}
+            >
+              {activeConversation.boundTo
+                ? `✓ Bitirdiğin "${activeConversation.boundTo}" üzerine`
+                : '🔒 İzleme ödevini bitirirsen sohbet doğrudan onun üzerine döner.'}
+            </Text>
+          </View>
+
           <View style={styles.firstTurnBox}>
             <Text style={styles.firstTurnLabel}>
               {conversationNo}. sohbet · {conversationPlan.turns.length} tur ·
@@ -845,6 +869,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: { fontSize: 15, fontWeight: '700', color: colors.accent },
+
+  /* sohbet hangi ödeve bağlı — bağlıysa yeşil, değilse nötr */
+  bagBox: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  bagBoxOn: { backgroundColor: '#E7F6EF' },
+  bagText: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+  bagTextOn: { color: '#08794A', fontWeight: '600' },
 
   /* sohbetin ilk sorusu — "değişti mi" sorusunun ekrandaki cevabı */
   firstTurnBox: {

@@ -35,6 +35,7 @@ import { A1_CATALOG } from './catalog/a1';
 import { A1_CESIT } from './catalog/a1-cesit';
 import { A1_MUZIK } from './catalog/a1-muzik';
 import { labelOf, sanitizeTastes } from './tastes';
+import { tasteFocusFor } from './prompts';
 import { dayNumber } from './reading';
 import { keysFromNote } from './tastematch';
 import { isTooHardFor, levelOfWord } from './wordbank';
@@ -1614,6 +1615,253 @@ export function buildLocalConversation(
     closingNote:
       'Cümlelerinin tek tek düzeltmesi öğretmen çalıştığında gelecek; buradaki uyarılar yalnızca yazım ve noktalama.',
     targetWords: words.slice(0, 3),
+  };
+}
+
+/**
+ * Zevk üstüne sohbet — **içeriği izlemeyen günün sohbeti.**
+ *
+ * ## Neden ayrı bir motor
+ *
+ * Kullanıcının koyduğu kural: *"diziyi izleyip çalışan onunla ilgili
+ * konuşmaya hak kazansın, diğerleri zevkleriyle ilgili konuşmaya hak
+ * kazansın."*
+ *
+ * Yukarıdaki banka baştan sona **içeriği** soruyor: "içinde ne var", "hızlı
+ * mı konuşuyorlar", "tekrar izler misin". İzlemediği bir bölüm için bunlar
+ * cevaplanamaz; kullanıcı ya uydurur ya sıkılıp bırakır. Bu yüzden konu
+ * değişince soruların da değişmesi gerekiyordu — aynı bankayı başka bir
+ * başlıkla sunmak sohbeti kurtarmaz.
+ *
+ * Buradaki turlar **present simple** üstüne kurulu ve kişinin kendi
+ * hayatını soruyor; A1'in gerçekten yapabildiği iş bu. Özne
+ * `tasteFocusFor`'dan geliyor, yani görev üretimiyle aynı zevk mantığından —
+ * iki yer ayrı konu seçip kullanıcıyı bölmesin.
+ *
+ * ⚠️ Bu sohbet bir **teselli ödülü değil, ikinci bir yol.** Ekranda
+ * "izlersen sohbet bölümün üstüne döner" yazıyor; ödevi yapmak sohbeti
+ * değiştiriyor, bu da ödevin karşılığı oluyor.
+ */
+export function buildTasteConversation(
+  tastes: Tastes | undefined,
+  level: string,
+  sizing: LevelSizing | undefined,
+  date: string,
+  /** Günün ders kelimeleri — sohbet onları çalıştırsın diye */
+  lessonWords: string[] = [],
+  variant = 0
+): ConversationPlan {
+  const spec = specOf(level, sizing);
+  const base = Math.max(6, Math.round(spec.speakingSeconds / 4));
+  const odak = tasteFocusFor(tastes, level, new Date(date + 'T12:00:00'), variant);
+
+  /**
+   * Zevk hiç doldurulmamışsa bile sohbetsiz gün olmasın. Konu kullanıcının
+   * kendi günü olur — A1'de zaten en sağlam malzeme bu.
+   */
+  const subject = odak?.subject ?? 'your day today';
+  const etiket = odak?.labelTR ?? 'günlük hayat';
+
+  const kelimeler =
+    lessonWords.length > 0
+      ? lessonWords
+      : toLevel(level) === 'A1'
+        ? ['good', 'new', 'every day']
+        : ['because', 'really', 'still'];
+
+  const YUVALAR: ConversationPlan['turns'][] = [
+    /* 1 — anlat */
+    [
+      {
+        say: `Hi! Let's talk about ${subject}. Tell me about it.`,
+        hint: 'Kısa cümlelerle anlat. Geniş zaman yeter.',
+        minWords: base + 3,
+        followUp: 'That is short. Give me two more sentences.',
+      },
+      {
+        say: `Hello! Tell me three things about ${subject}.`,
+        hint: 'Üç şey söyle. Her cümle kısa olsun.',
+        minWords: base + 3,
+        followUp: 'One more thing, please.',
+      },
+      {
+        say: `Hi! I do not know about ${subject}. Explain it to me.`,
+        hint: 'Hiç bilmeyen birine anlat.',
+        minWords: base + 3,
+        followUp: 'Two more sentences, please.',
+      },
+      {
+        say: `Hey! Start with "I like ..." and tell me about ${subject}.`,
+        hint: '"I like ..." diye başla, sonra devam et.',
+        minWords: base + 3,
+        followUp: 'Keep going — two more sentences.',
+      },
+    ],
+    /* 2 — ne zaman / ne sıklıkta (present simple çalışması) */
+    [
+      {
+        say: `When do you do this? Say the days or the time.`,
+        hint: 'Hangi gün ya da saat? "On Sunday", "in the evening" gibi.',
+        minWords: base,
+        followUp: 'Add one more sentence about the time.',
+      },
+      {
+        say: `How often is it? Every day, every week?`,
+        hint: 'Ne sıklıkta? "Every day", "two times a week" gibi.',
+        minWords: base,
+        followUp: 'Say it again in a full sentence.',
+      },
+      {
+        say: `Do you do this in the morning or in the evening? Tell me.`,
+        hint: 'Sabah mı akşam mı? Tek cümle kur.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+      {
+        say: `Is it a weekday thing or a weekend thing? Say why.`,
+        hint: 'Hafta içi mi hafta sonu mu? Sebebini de söyle.',
+        minWords: base,
+        followUp: 'Tell me a little more.',
+      },
+    ],
+    /* 3 — kimle / nerede */
+    [
+      {
+        say: `Who is with you? Tell me about that person.`,
+        hint: 'Yanında kim var? O kişiyi kısaca anlat.',
+        minWords: base,
+        followUp: 'Say one more thing about them.',
+      },
+      {
+        say: `Where are you when you do this? Describe the place.`,
+        hint: 'Neredesin? Orayı tarif et.',
+        minWords: base,
+        followUp: 'Two more sentences about the place.',
+      },
+      {
+        say: `Do you do this alone or with people? Say one sentence.`,
+        hint: 'Yalnız mı, insanlarla mı? Tek cümle.',
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: `Is your family in this too? Tell me.`,
+        hint: 'Ailen de var mı bu işin içinde? Anlat.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+    ],
+    /* 4 — beğeni (tek cümlelik yorum, gerekçe zinciri değil) */
+    [
+      {
+        say: `Do you like it? Say one good thing about it.`,
+        hint: 'Beğeniyor musun? İyi bulduğun bir şeyi söyle.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+      {
+        say: `Is it easy or hard for you? One sentence.`,
+        hint: 'Kolay mı zor mu? Tek cümle.',
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: `What is the best part for you? Tell me.`,
+        hint: 'En iyi kısmı ne? Kısaca söyle.',
+        minWords: base,
+        followUp: 'Tell me a little more.',
+      },
+      {
+        say: `Do you want to do it more? Say yes or no, and one sentence.`,
+        hint: 'Daha çok yapmak ister misin? Evet/hayır, sonra bir cümle.',
+        minWords: base,
+        followUp: 'Now the sentence, please.',
+      },
+    ],
+    /* 5 — kelime kullandır */
+    [
+      {
+        say: `Now use this word in a sentence: "${kelimeler[0]}".`,
+        hint: `"${kelimeler[0]}" kelimesiyle bir cümle kur.`,
+        useWords: [kelimeler[0]],
+        minWords: base,
+        followUp: 'Try one more sentence with that word.',
+      },
+      {
+        say: `Say a sentence with "${kelimeler[Math.min(1, kelimeler.length - 1)]}".`,
+        hint: `"${kelimeler[Math.min(1, kelimeler.length - 1)]}" kelimesini kullan.`,
+        useWords: [kelimeler[Math.min(1, kelimeler.length - 1)]],
+        minWords: base,
+        followUp: 'One more sentence with it.',
+      },
+      {
+        say: `Tell me one English word you know about this. Use it in a sentence.`,
+        hint: 'Bu konuyla ilgili bildiğin bir kelimeyi cümle içinde kullan.',
+        minWords: base,
+        followUp: 'Use it one more time.',
+      },
+      {
+        say: `Use these two words together: "${kelimeler[0]}" and "${kelimeler[Math.min(1, kelimeler.length - 1)]}".`,
+        hint: 'İki kelimeyi aynı cümlede kullanmayı dene.',
+        useWords: kelimeler.slice(0, 2),
+        minWords: base,
+        followUp: 'Try again with a shorter sentence.',
+      },
+    ],
+    /* 6 — kapanış köprüsü */
+    [
+      {
+        say: `Last one: what do you want to do next about this?`,
+        hint: 'Bundan sonra ne yapmak istiyorsun? Tek cümle.',
+        minWords: base,
+        followUp: 'One more sentence, please.',
+      },
+      {
+        say: `Last question: tell me one new thing you want to try.`,
+        hint: 'Denemek istediğin yeni bir şey söyle.',
+        minWords: base,
+        followUp: 'Say why you want to try it.',
+      },
+      {
+        say: `Finally: is this important for you? Say one sentence.`,
+        hint: 'Senin için önemli mi? Tek cümle.',
+        minWords: base,
+        followUp: 'Add one more sentence.',
+      },
+      {
+        say: `Last one: tell me one thing you learned in English today.`,
+        hint: 'Bugün İngilizcede öğrendiğin bir şeyi söyle.',
+        minWords: base,
+        followUp: 'Say why that one stayed with you.',
+      },
+    ],
+  ];
+
+  /** Yuvalar bağımsız seçiliyor — gerekçesi içerikli bankanın yanında yazılı */
+  const turns = YUVALAR.map(
+    (yuva, i) => yuva[karisikTohum(`${date}|zevk|${subject}|${variant}|${i}`) % yuva.length]
+  );
+
+  return {
+    date,
+    topic: `${etiket.charAt(0).toLocaleUpperCase('tr')}${etiket.slice(1)} — senin hayatın`,
+    /**
+     * ⚠️ `contentTitle` bilerek **boş.** Bu sohbetin bir içerik ödevi yok;
+     * doldurmak "şu bölüm üstüne konuştuk" yalanı olurdu ve ekran da o
+     * başlığı gösterirdi.
+     */
+    /**
+     * ⚠️ Giriş **sohbet ekranında** okunuyor; oradaki tek açıklama bu.
+     * "Bitirirsen döner" cümlesi bilerek burada değil, Öğretmen ekranındaki
+     * bağ kutusunda — ikisi de yazınca aynı şey alt alta iki kez görünüyordu.
+     */
+    intro:
+      'Bugün izleme ödevini bitirmediğin için sohbet senin ilgi alanların üstüne. Cevaplarını mikrofonla vermeye çalış; yazmak her zaman daha kolay, konuşmak seni asıl geliştiren.',
+    turns,
+    closing: 'Good work. You talked about your own life in English — that is real practice.',
+    closingNote:
+      'Cümlelerinin tek tek düzeltmesi öğretmen çalıştığında gelecek; buradaki uyarılar yalnızca yazım ve noktalama.',
+    targetWords: kelimeler.slice(0, 3),
   };
 }
 

@@ -867,6 +867,32 @@ yürütüyor. Bu şu demek:
   bölümünün/şarkının üstüne olsun; `contentTitle` alanına o içeriğin başlığını
   yaz.
 
+### ⛔ `contentTitle` bir kapı — yanlış doldurursan sohbetin kullanılmaz
+
+Kullanıcının koyduğu kural: *"diziyi izleyip çalışan onunla ilgili konuşmaya
+hak kazansın, diğerleri zevkleriyle ilgili konuşmaya hak kazansın."*
+
+Uygulama bunu **zorluyor** (`getActiveConversation`):
+
+| `contentTitle` | Kullanıcı o içeriği bitirdi mi | Sonuç |
+|---|---|---|
+| `content[]` içindeki bir izle/dinle başlığı | evet | **senin sohbetin** kullanılır |
+| `content[]` içindeki bir izle/dinle başlığı | hayır | senin sohbetin **atılır**, uygulama zevk sohbeti verir |
+| boş ya da listede olmayan bir şey | — | senin sohbetin kullanılır (kapıya takılmaz) |
+
+Bundan çıkan üç kural:
+
+1. **`contentTitle`'ı `content[]` içindeki bir başlıkla birebir aynı yaz.**
+   Harfi harfine eşleşmezse bağ kurulmaz ve kullanıcı ödevini yapsa bile
+   ekranda "bitirdiğin şeyin üzerine" yazısını görmez.
+2. **Okuma metninin (`lesson.passage`) başlığını buraya yazma.** 14 Ağustos
+   paketinde bu yapıldı: sohbet hikâyeye bağlandı, izleme ödevi ortada kaldı
+   ve kullanıcı *"dizi/film ödevlerinden bağımsız bir sohbet geliyor"* dedi.
+   Metin üstüne sohbet yazacaksan `contentTitle`'ı **boş bırak**.
+3. **İçeriğe bağlı sohbet yazdığında yedeklerden birini bağsız yap.**
+   `conversationAlternatives`'in ilki içerik üstüne, ikincisi genel/zevk
+   üstüne olsun; böylece izlemediği gün de elle yazılmış bir sohbet kalır.
+
 ### Yapı
 
 ```json

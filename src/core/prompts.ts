@@ -491,6 +491,51 @@ function tasteBased(
   return frames[spec](subject);
 }
 
+/**
+ * Sohbetin zevk tarafındaki konusu.
+ *
+ * Kullanıcının kuralı: *"diziyi izleyip çalışan onunla ilgili konuşmaya hak
+ * kazansın, diğerleri zevkleriyle ilgili konuşmaya hak kazansın."* İzlemeyen
+ * gün sohbetsiz kalmıyor; konu içerikten **zevklere** geçiyor.
+ *
+ * Neden görev üreten `tasteBased` doğrudan kullanılamıyor: o hazır bir *cümle*
+ * döndürüyor (*"Talk about your favourite team."*). Sohbetin altı turu aynı
+ * özneyi farklı açılardan sormak zorunda, yani cümle değil **öznenin kendisi**
+ * gerekiyor. Seçim mantığı birebir aynı tutuldu ki aynı gün görev bir konuyu,
+ * sohbet bambaşka bir konuyu sormasın.
+ */
+export interface TasteFocus {
+  /** Ekranda görünen Türkçe etiket — "spor", "müzik" */
+  labelTR: string;
+  /** Turların içine giren İngilizce özne — "your favourite team" */
+  subject: string;
+}
+
+export function tasteFocusFor(
+  tastes: Tastes | undefined,
+  level: string,
+  today: Date = new Date(),
+  /** "Başka bir sohbet ver" her basıldığında bir artıyor */
+  salt = 0
+): TasteFocus | null {
+  const topics = topicsFor(tastes);
+  const spec = LEVELS[Math.max(0, Math.min(LEVELS.length - 1, levelIndex(level)))];
+
+  /** Hiçbir blok tutmadıysa kullanıcının kendi yazdığı kelime konu olur */
+  if (topics.length === 0) {
+    const own = noteSubject(tastes?.note);
+    return own ? { labelTR: own, subject: own } : null;
+  }
+
+  const day = dayNumber(today) + salt;
+  const topic = topics[day % topics.length];
+  const pool = spec === 'A1' ? topic.simple : topic.subjects;
+  return {
+    labelTR: topic.labelTR,
+    subject: pool[Math.floor(day / topics.length) % pool.length],
+  };
+}
+
 /** Görevin hangi ilgi alanından geldiği — ekranda "· spor" diye gösteriliyor */
 export function taskTopicLabel(
   tastes: Tastes | undefined,
